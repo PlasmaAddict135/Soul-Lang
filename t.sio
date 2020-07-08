@@ -4,7 +4,7 @@ print < world >
 if test locate -> 10 { 
     hello 
     print < working > 
-    print < win >
+    print < win > 
 } 
 if test locate <- 3 { 
     hello
