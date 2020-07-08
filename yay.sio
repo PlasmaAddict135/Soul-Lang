@@ -1,0 +1,5 @@
+if test locate -> 6 { 
+    hello print < working > 
+} 
+test 
+;

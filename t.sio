@@ -1,0 +1,19 @@
+//commenting out this stuff
+print < hello > 
+print < world > 
+if test locate -> 10 { 
+    hello 
+    print < working > 
+    print < win >
+} 
+if test locate <- 3 { 
+    hello
+    print < back working too > 
+} 
+test 
+print < yaay! > 
+print < it works > 
+print < first simi long file > 
+print < 19 lines > 
+fib 19 
+;
