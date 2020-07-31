@@ -26,7 +26,6 @@ class Lexer:
         self.kws['mul'] = TokenKind.OPERATOR
         self.kws['div'] = TokenKind.OPERATOR
         self.kws['print'] = TokenKind.PRINT
-        self.kws['"'] = TokenKind.STRING
     
     def lex_num(self):
         match = ""
@@ -138,7 +137,7 @@ class Print(AST):
     def __repr__(self):
         return f"print {self.data}"
     def eval(self):
-        print(String(self.data.eval()))
+        print(self.data.eval())
         return None
 class SyntaxError(Exception):
     pass
@@ -210,7 +209,7 @@ class Parser:
 
     def parse_print(self):
         self.expect(TokenKind.PRINT)
-        d = self.parse()
+        d = self.parse_expr()
         return Print(d)
 
     def parse_ident(self):
