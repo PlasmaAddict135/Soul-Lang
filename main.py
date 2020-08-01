@@ -216,10 +216,6 @@ class Parser:
         return IfExpr(cond, csq, alt)
 
     def parse_binop(self):
-        # add something to the lexer that return Token(OPERATOR, '+')
-        # or Token(OPERATOR, '-')
-        #
-        # this will parse something like "- 1 2" or "+ 1 2"
         op = self.expect(TokenKind.OPERATOR).data 
         first = self.parse_expr()
         second = self.parse_expr()
@@ -231,7 +227,7 @@ class Parser:
 
     def parse_var(self):
         self.expect(TokenKind.VAR)
-        name = self.parse_string()
+        name = self.parse_ident()
         return VarExpr(name)
     
     def parse_assign(self):
@@ -277,4 +273,4 @@ class Parser:
             raise SyntaxError("Unexpected token {}".format(t))
 
 inpt = input('>>> ')
-print(Parser(Lexer(inpt)).parse_expr().eval())
+print(Parser(Lexer(inpt)).parse_expr().eval(state))
