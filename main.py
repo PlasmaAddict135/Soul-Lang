@@ -1,7 +1,7 @@
 from enum import Enum
 from collections import defaultdict
 
-TokenKind = Enum('TokenKind', 'IF THEN ELSE IDENT INT LBRACE RBRACE OPERATOR PRINT STRING UNKNOWN EOF')
+TokenKind = Enum('TokenKind', 'IF THEN ELSE IDENT INT LBRACE RBRACE OPERATOR PRINT STRING VAR ASSIGN UNKNOWN EOF')
 
 class Token:    
     def __init__(self, kind: TokenKind, data):
@@ -26,6 +26,8 @@ class Lexer:
         self.kws['mul'] = TokenKind.OPERATOR
         self.kws['div'] = TokenKind.OPERATOR
         self.kws['print'] = TokenKind.PRINT
+        self.kws['var'] = TokenKind.VAR
+        self.kws['='] = TokenKind.ASSIGN
     
     def lex_num(self):
         match = ""
@@ -73,10 +75,12 @@ class Lexer:
             self.idx += 1
             return Token(TokenKind.PRINT, None)
         elif ch == '"':
-            self.idx += 1
-            return Token(TokenKind.STRING, None)
+            return self.lex_string_literal()
+        elif ch == 'var':
+            return Token(TokenKind.VAR, None)
+        elif ch == '=':
+            return Token(TokenKind.ASSIGN, None)
         else:
-            self.idx += 1
             return Token(TokenKind.UNKOWN, ch)
 
     def lex_string_literal(self):
@@ -99,6 +103,20 @@ class Lexer:
 class AST:
     pass 
 
+class State:
+    vals = {}
+    def bind(name, val):
+        self.vals[name] = val
+    def lookup(name):
+        return self.vals[name]
+
+class Assign(AST):
+    def __init__(self, var: AST, assignment: AST):
+        self.var = var
+        self.assignment = assignment
+    def eval(self, state):
+        state.bind(self.var.eval(state), self.assignment.eval(state))
+
 class IfExpr(AST):
     def __init__(self, cond: AST, left: AST, right: AST):
         self.cond = cond 
@@ -114,13 +132,15 @@ class VarExpr(AST):
         self.name = name 
     def __repr__(self):
         return self.name
+    def eval(self, state):
+        return state.lookup(self.name)
 
 class NumExpr(AST):
     def __init__(self, val: int):
         self.val = val
     def __repr__(self):
         return str(self.val)
-    def eval(self):
+    def eval(self, state):
         return self.val
 
 class String(AST):
@@ -128,7 +148,7 @@ class String(AST):
         self.string = string
     def __repr__(self):
         return self.string
-    def eval(self):
+    def eval(self, state):
         return self.string
 
 class Print(AST):
@@ -136,9 +156,11 @@ class Print(AST):
         self.data = data
     def __repr__(self):
         return f"print {self.data}"
-    def eval(self):
-        print(self.data.eval())
-        return None
+    def eval(self, state):
+        if self.data.eval() is not None:
+            print(self.data.eval(state))
+        else:
+            return None
 class SyntaxError(Exception):
     pass
 
@@ -149,15 +171,15 @@ class BinOp(AST):
         self.second = second
     def __repr__(self):
         return "{} {} {}".format(self.first,self.op,self.second)
-    def eval(self):
+    def eval(self, state):
         if self.op == 'plus':
-            return self.first.eval() + self.second.eval()
+            return self.first.eval(state) + self.second.eval(state)
         elif self.op == 'min':
-            return self.first.eval() - self.second.eval()
+            return self.first.eval(state) - self.second.eval(state)
         elif self.op == 'mul':
-            return self.first.eval() * self.second.eval()
+            return self.first.eval(state) * self.second.eval(state)
         elif self.op == 'div':
-            return self.first.eval() / self.second.eval()
+            return self.first.eval(state) / self.second.eval(state)
 
 class Parser:
     token = Token(TokenKind.UNKNOWN, "dummy")
@@ -176,7 +198,7 @@ class Parser:
             # swap the current token with the new one
             ret = self.token
             self.token = next_token
-            return ret 
+            return ret
         return None
 
     def expect(self, kind: TokenKind):
@@ -207,6 +229,17 @@ class Parser:
         data = self.expect(TokenKind.INT).data
         return NumExpr(data)
 
+    def parse_var(self):
+        self.expect(TokenKind.VAR)
+        name = self.parse_string()
+        return VarExpr(name)
+    
+    def parse_assign(self):
+        self.expect(TokenKind.ASSIGN)
+        n = self.parse_string()
+        a = self.parse_var()
+        return Assign(n, a)
+
     def parse_print(self):
         self.expect(TokenKind.PRINT)
         d = self.parse_expr()
@@ -236,32 +269,12 @@ class Parser:
             return self.parse_print()
         elif t == TokenKind.STRING:
             return self.parse_string()
+        elif t == TokenKind.VAR:
+            return self.parse_var()
+        elif t == TokenKind.ASSIGN:
+            return self.parse_assign()
         else:
             raise SyntaxError("Unexpected token {}".format(t))
 
 inpt = input('>>> ')
 print(Parser(Lexer(inpt)).parse_expr().eval())
-
-#IMPLIMENT STRINGS TOMAROW
-'''
- def lex_string_literal(self):
-        # what do the next 2 lines do?
-        assert(self.src[self.idx] == '"')
-        self.idx += 1
-
-        literal = ""
-        while self.idx < len(self.src) and self.src[self.idx] != WHAT_CHAR_GOES_HERE:
-            literal += self.src[self.idx]
-            self.idx += 1
-        
-        # why are we doing this again?
-        # do we need to check anything about self.idx?
-        assert(self.src[self.idx] == '"')
-        self.idx += 1
-        return Token(TokenKind.STRING, literal)
-'''
-'''
- if self.idx >= len(self.src):
-            print("missing end of string delimiter!")
-            return Token(TokenKind.UNKNOWN, literal)
-'''
