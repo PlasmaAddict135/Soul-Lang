@@ -266,8 +266,6 @@ class Parser:
         elif t == TokenKind.STRING:
             return self.parse_string()
         elif t == TokenKind.VAR:
-            return self.parse_var()
-        elif t == TokenKind.ASSIGN:
             return self.parse_assign()
         else:
             raise SyntaxError("Unexpected token {}".format(t))
