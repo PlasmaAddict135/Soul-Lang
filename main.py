@@ -226,15 +226,15 @@ class Parser:
         return NumExpr(data)
 
     def parse_var(self):
-        self.expect(TokenKind.VAR)
-        name = self.parse_ident()
-        return VarExpr(name)
+        data = self.expect(TokenKind.IDENT).data
+        return VarExpr(data)
     
     def parse_assign(self):
+        self.expect(TokenKind.VAR)
+        ident = self.expect(TokenKind.IDENT).data
         self.expect(TokenKind.ASSIGN)
-        n = self.parse_string()
-        a = self.parse_var()
-        return Assign(n, a)
+        value = self.parse_expr()
+        return Assign(ident, value)
 
     def parse_print(self):
         self.expect(TokenKind.PRINT)
@@ -243,7 +243,7 @@ class Parser:
 
     def parse_ident(self):
         data = self.expect(TokenKind.IDENT).data
-        return NumExpr(data)
+        return VarExpr(data)
 
     def parse_string(self):
         data = self.expect(TokenKind.STRING).data
@@ -256,7 +256,7 @@ class Parser:
         if t == TokenKind.IF:
             return self.parse_if()
         elif t == TokenKind.IDENT:
-            return self.parse_ident()
+            return self.parse_var()
         elif t == TokenKind.INT:
             return self.parse_num()
         elif t == TokenKind.OPERATOR:
