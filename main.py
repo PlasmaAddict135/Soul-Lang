@@ -68,17 +68,10 @@ class Lexer:
         elif ch == '}':
             self.idx += 1
             return Token(TokenKind.RBRACE, None)
-        elif ch == 'plus':
-            self.idx += 1
-            return Token(TokenKind.OPERATOR, None)
-        elif ch == 'print':
-            self.idx += 1
-            return Token(TokenKind.PRINT, None)
         elif ch == '"':
             return self.lex_string_literal()
-        elif ch == 'var':
-            return Token(TokenKind.VAR, None)
         elif ch == '=':
+            self.idx +=1
             return Token(TokenKind.ASSIGN, None)
         else:
             return Token(TokenKind.UNKOWN, ch)
