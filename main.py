@@ -215,6 +215,10 @@ class Parser:
     def parse_ident(self):
         data = self.expect(TokenKind.IDENT).data
         return NumExpr(data)
+
+    def parse_string(self):
+        data = self.expect(TokenKind.STRING).data
+        return String(data)
         
     def parse_expr(self):
         if self.token is None:
@@ -230,6 +234,8 @@ class Parser:
             return self.parse_binop()
         elif t == TokenKind.PRINT:
             return self.parse_print()
+        elif t == TokenKind.STRING:
+            return self.parse_string()
         else:
             raise SyntaxError("Unexpected token {}".format(t))
 
