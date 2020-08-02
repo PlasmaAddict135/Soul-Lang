@@ -98,9 +98,9 @@ class AST:
 
 class State:
     vals = {}
-    def bind(name, val):
+    def bind(self, name, val):
         self.vals[name] = val
-    def lookup(name):
+    def lookup(self, name):
         return self.vals[name]
 
 class Assign(AST):
@@ -108,14 +108,13 @@ class Assign(AST):
         self.var = var
         self.assignment = assignment
     def eval(self, state):
-        state.bind(self.var.eval(state), self.assignment.eval(state))
+        state.bind(self.var, self.assignment)
 
 class IfExpr(AST):
     def __init__(self, cond: AST, left: AST, right: AST):
         self.cond = cond 
         self.left = left 
         self.right = right
-
     def __repr__(self):
         return "if {} then {} else {}".format(self.cond, self.left, self.right)
 
@@ -233,10 +232,6 @@ class Parser:
         self.expect(TokenKind.PRINT)
         d = self.parse_expr()
         return Print(d)
-
-    def parse_ident(self):
-        data = self.expect(TokenKind.IDENT).data
-        return VarExpr(data)
 
     def parse_string(self):
         data = self.expect(TokenKind.STRING).data
