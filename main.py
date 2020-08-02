@@ -149,7 +149,7 @@ class Print(AST):
     def __repr__(self):
         return f"print {self.data}"
     def eval(self, state):
-        if self.data.eval() is not None:
+        if self.data.eval(state) is not None:
             print(self.data.eval(state))
         else:
             return None
@@ -258,6 +258,7 @@ class Parser:
         else:
             raise SyntaxError("Unexpected token {}".format(t))
 
-default_state = State()
-inpt = input('>>> ')
-print(Parser(Lexer(inpt)).parse_expr().eval(default_state))
+while True:
+    default_state = State()
+    inpt = input('>>> ')
+    print(Parser(Lexer(inpt)).parse_expr().eval(default_state))
