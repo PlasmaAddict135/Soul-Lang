@@ -263,5 +263,6 @@ class Parser:
         else:
             raise SyntaxError("Unexpected token {}".format(t))
 
+default_state = State()
 inpt = input('>>> ')
-print(Parser(Lexer(inpt)).parse_expr().eval(state))
+print(Parser(Lexer(inpt)).parse_expr().eval(default_state))
