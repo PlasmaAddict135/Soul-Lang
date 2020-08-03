@@ -1,7 +1,7 @@
 from enum import Enum
 from collections import defaultdict
 
-TokenKind = Enum('TokenKind', 'IF THEN ELSE IDENT INT LBRACE RBRACE OPERATOR PRINT STRING VAR ASSIGN UNKNOWN EOF')
+TokenKind = Enum('TokenKind', 'IF THEN ELSE IDENT INT OPERATOR PRINT STRING VAR ASSIGN UNKNOWN EOF')
 
 class Token:    
     def __init__(self, kind: TokenKind, data):
@@ -19,7 +19,7 @@ class Lexer:
     def __init__(self, src):
         self.src = src 
         self.kws['if'] = TokenKind.IF
-        self.kws['then'] = TokenKind.THEN
+        self.kws['{'] = TokenKind.THEN
         self.kws['else'] = TokenKind.ELSE
         self.kws['plus'] = TokenKind.OPERATOR
         self.kws['min'] = TokenKind.OPERATOR
@@ -62,12 +62,6 @@ class Lexer:
             return self.lex_ident()
         elif ch.isdigit():
             return self.lex_num()
-        elif ch == '{':
-            self.idx += 1
-            return Token(TokenKind.LBRACE, None)
-        elif ch == '}':
-            self.idx += 1
-            return Token(TokenKind.RBRACE, None)
         elif ch == '"':
             return self.lex_string_literal()
         elif ch == '=':
@@ -116,7 +110,12 @@ class IfExpr(AST):
         self.left = left 
         self.right = right
     def __repr__(self):
-        return "if {} then {} else {}".format(self.cond, self.left, self.right)
+        return "if {} { {} } else {}".format(self.cond, self.left, self.right)
+    def eval(self, state):
+        if self.cond.eval(state):
+            return self.left.eval(state)
+        else:
+            return self.right.eval(state)
 
 
 class VarExpr(AST):
