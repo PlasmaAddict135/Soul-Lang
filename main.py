@@ -108,7 +108,7 @@ class Assign(AST):
         self.var = var
         self.assignment = assignment
     def eval(self, state):
-        state.bind(self.var, self.assignment)
+        state.bind(self.var, self.assignment.eval(state))
 
 class IfExpr(AST):
     def __init__(self, cond: AST, left: AST, right: AST):
