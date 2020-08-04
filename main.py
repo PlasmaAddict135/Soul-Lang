@@ -67,6 +67,9 @@ class Lexer:
         elif ch == '=':
             self.idx +=1
             return Token(TokenKind.ASSIGN, None)
+        elif ch == '{':
+            self.idx += 1
+            return Token(TokenKind.THEN, None)
         else:
             return Token(TokenKind.UNKOWN, ch)
 
