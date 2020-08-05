@@ -1,7 +1,7 @@
 from enum import Enum
 from collections import defaultdict
 
-TokenKind = Enum('TokenKind', 'IF THEN ELSE IDENT INT OPERATOR PRINT STRING VAR ASSIGN UNKNOWN EOF')
+TokenKind = Enum('TokenKind', 'IF THEN ELSE IDENT INT OPERATOR PRINT STRING VAR ASSIGN UNKNOWN EOF ENDLN')
 
 class Token:    
     def __init__(self, kind: TokenKind, data):
@@ -28,6 +28,8 @@ class Lexer:
         self.kws['print'] = TokenKind.PRINT
         self.kws['var'] = TokenKind.VAR
         self.kws['='] = TokenKind.ASSIGN
+        # NEW: FOR SEQUENCE NODE
+        self.kws[';'] = TokenKind.ENDLN
     
     def lex_num(self):
         match = ""
@@ -52,6 +54,7 @@ class Lexer:
     def __iter__(self):
         return self
 
+    # RECOGNIZE NEXT TOKEN
     def __next__(self):
         if self.idx >= len(self.src):
             raise StopIteration
@@ -65,11 +68,15 @@ class Lexer:
         elif ch == '"':
             return self.lex_string_literal()
         elif ch == '=':
-            self.idx +=1
+            self.idx += 1
             return Token(TokenKind.ASSIGN, None)
         elif ch == '{':
             self.idx += 1
             return Token(TokenKind.THEN, None)
+        # NEW: FOR SEQUENCE NODE
+        elif ch == ';':
+            self.idx += 1
+            return Token(TokenKind.ENDLN, None)
         else:
             return Token(TokenKind.UNKOWN, ch)
 
@@ -89,6 +96,16 @@ class Lexer:
         self.idx += 1
         return Token(TokenKind.STRING, literal)
 
+    def lex_semicolon(self):
+        assert(self.src[self.idx] == ';')
+        self.idx += 1
+
+        anything = ""
+        pass
+
+########################################
+# DRIVER CLASSES
+########################################
 
 class AST:
     pass 
@@ -100,34 +117,21 @@ class State:
     def lookup(self, name):
         return self.vals[name]
 
+# NEW: FOR SEQUENCE NODE
+class SequenceNode(AST):
+  def __init__(self, first, second):
+    self.first = first
+    self.second = second
+  def eval(self, state):
+    self.first.eval(state)
+    return self.second.eval(state)
+
 class Assign(AST):
     def __init__(self, var: AST, assignment: AST):
         self.var = var
         self.assignment = assignment
     def eval(self, state):
         state.bind(self.var, self.assignment.eval(state))
-
-class IfExpr(AST):
-    def __init__(self, cond: AST, left: AST, right: AST):
-        self.cond = cond 
-        self.left = left 
-        self.right = right
-    def __repr__(self):
-        return "if {} { {} } else {}".format(self.cond, self.left, self.right)
-    def eval(self, state):
-        if self.cond.eval(state):
-            return self.left.eval(state)
-        else:
-            return self.right.eval(state)
-
-
-class VarExpr(AST):
-    def __init__(self, name: str):
-        self.name = name 
-    def __repr__(self):
-        return self.name
-    def eval(self, state):
-        return state.lookup(self.name)
 
 class NumExpr(AST):
     def __init__(self, val: int):
@@ -145,6 +149,10 @@ class String(AST):
     def eval(self, state):
         return self.string
 
+######################################
+# RAN CLASSES
+######################################
+
 class Print(AST):
     def __init__(self, data: AST):
         self.data = data
@@ -155,8 +163,30 @@ class Print(AST):
             print(self.data.eval(state))
         else:
             return None
+
+class VarExpr(AST):
+    def __init__(self, name: str):
+        self.name = name 
+    def __repr__(self):
+        return self.name
+    def eval(self, state):
+        return state.lookup(self.name)
+
 class SyntaxError(Exception):
     pass
+
+class IfExpr(AST):
+    def __init__(self, cond: AST, left: AST, right: AST):
+        self.cond = cond 
+        self.left = left 
+        self.right = right
+    def __repr__(self):
+        return "if {} { {} } else {}".format(self.cond, self.left, self.right)
+    def eval(self, state):
+        if self.cond.eval(state):
+            return self.left.eval(state)
+        else:
+            return self.right.eval(state)
 
 class BinOp(AST):
     def __init__(self, op, first: AST, second: AST):
@@ -230,6 +260,10 @@ class Parser:
         value = self.parse_expr()
         return Assign(ident, value)
 
+    # NEW: FOR SEQUENCE NODE
+    def parse_sc(self):
+        self.expect(TokenKind.ENDLN)
+
     def parse_print(self):
         self.expect(TokenKind.PRINT)
         d = self.parse_expr()
@@ -238,7 +272,8 @@ class Parser:
     def parse_string(self):
         data = self.expect(TokenKind.STRING).data
         return String(data)
-        
+
+    # TO EXECUTE EACH AST NODE WITH ITS CASE    
     def parse_expr(self):
         if self.token is None:
             raise SyntaxError("Unexpected EOF")
@@ -257,6 +292,9 @@ class Parser:
             return self.parse_string()
         elif t == TokenKind.VAR:
             return self.parse_assign()
+        # NEW: FOR SEQUENCE NODE
+        elif t ==TokenKind.ENDLN:
+            return self.parse_sc()
         else:
             raise SyntaxError("Unexpected token {}".format(t))
 
