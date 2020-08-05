@@ -1,7 +1,7 @@
 from enum import Enum
 from collections import defaultdict
 
-TokenKind = Enum('TokenKind', 'IF THEN ELSE IDENT INT OPERATOR PRINT STRING VAR ASSIGN UNKNOWN EOF ENDLN')
+TokenKind = Enum('TokenKind', 'IF THEN ELSE IDENT INT OPERATOR PRINT STRING VAR ASSIGN UNKNOWN EOF ENDLN OPEN METHOD')
 
 class Token:    
     def __init__(self, kind: TokenKind, data):
@@ -28,8 +28,8 @@ class Lexer:
         self.kws['print'] = TokenKind.PRINT
         self.kws['var'] = TokenKind.VAR
         self.kws['='] = TokenKind.ASSIGN
-        # NEW: FOR SEQUENCE NODE
-        self.kws[';'] = TokenKind.ENDLN
+        self.kws['open'] = TokenKind.OPEN
+        self.kws['r'] = TokenKind.METHOD
     
     def lex_num(self):
         match = ""
@@ -124,6 +124,8 @@ class Assign(AST):
     def __init__(self, var: AST, assignment: AST):
         self.var = var
         self.assignment = assignment
+    def __repr__(self):
+        return self.var
     def eval(self, state):
         state.bind(self.var, self.assignment.eval(state))
 
@@ -165,6 +167,15 @@ class VarExpr(AST):
         return self.name
     def eval(self, state):
         return state.lookup(self.name)
+
+# WIP
+class Open(AST):
+    def __init__(self, file: AST, method: AST):
+        self.file = file
+        self.method = method
+    def eval(self, state):
+        if self.method == 'r':
+            return open(self.file.eval(state), 'r').read()
 
 class SyntaxError(Exception):
     pass
@@ -213,7 +224,7 @@ class Parser:
             next_token = None 
         
         if self.token:
-            # swap the current token with the new one
+            # SWAP THE CURRENT TOKEN WITH THE NEW ONE
             ret = self.token
             self.token = next_token
             return ret
@@ -238,6 +249,12 @@ class Parser:
         first = self.parse_expr()
         second = self.parse_expr()
         return BinOp(op, first, second)
+
+    def parse_file_open(self):
+        self.expect(TokenKind.OPEN).data
+        file = self.parse_string()
+        method = self.expect(TokenKind.METHOD)
+        return Open(file, method)
 
     def parse_num(self):
         data = self.expect(TokenKind.INT).data
@@ -289,6 +306,8 @@ class Parser:
             return self.parse_string()
         elif t == TokenKind.VAR:
             return self.parse_assign()
+        elif t == TokenKind.OPEN:
+            return self.parse_file_open()
         # NEW: FOR SEQUENCE NODE
         elif t ==TokenKind.ENDLN:
             return self.parse_sc()
