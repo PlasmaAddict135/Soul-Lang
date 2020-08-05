@@ -80,6 +80,7 @@ class Lexer:
         else:
             return Token(TokenKind.UNKOWN, ch)
 
+    # FOR EVALUATING STRINGS
     def lex_string_literal(self):
         assert(self.src[self.idx] == '"')
         self.idx += 1
@@ -95,13 +96,6 @@ class Lexer:
         assert(self.src[self.idx] == '"')
         self.idx += 1
         return Token(TokenKind.STRING, literal)
-
-    def lex_semicolon(self):
-        assert(self.src[self.idx] == ';')
-        self.idx += 1
-
-        anything = ""
-        pass
 
 ########################################
 # DRIVER CLASSES
@@ -150,7 +144,7 @@ class String(AST):
         return self.string
 
 ######################################
-# RAN CLASSES
+# RUN CLASSES
 ######################################
 
 class Print(AST):
@@ -262,7 +256,10 @@ class Parser:
 
     # NEW: FOR SEQUENCE NODE
     def parse_sc(self):
+        first = self.parse_expr()
         self.expect(TokenKind.ENDLN)
+        second = self.parse_expr()
+        return SequenceNode(first, second)
 
     def parse_print(self):
         self.expect(TokenKind.PRINT)
@@ -298,6 +295,7 @@ class Parser:
         else:
             raise SyntaxError("Unexpected token {}".format(t))
 
+# INPUTS
 current_state = State()
 while True:
     inpt = input('>>> ')
