@@ -1,7 +1,7 @@
 from enum import Enum
 from collections import defaultdict
 
-TokenKind = Enum('TokenKind', 'IF THEN ELSE IDENT INT OPERATOR PRINT STRING VAR ASSIGN UNKNOWN EOF ENDLN OPEN METHOD BLOCKEND')
+TokenKind = Enum('TokenKind', 'IF THEN ELSE IDENT INT OPERATOR PRINT STRING VAR ASSIGN UNKNOWN EOF ENDLN OPEN METHOD BLOCKEND EQ')
 
 class Token:    
     def __init__(self, kind: TokenKind, data):
@@ -80,6 +80,9 @@ class Lexer:
         elif ch == '}':
             self.idx += 1
             return Token(TokenKind.BLOCKEND, None)
+        elif ch == '==':
+            self.idx += 1
+            return Token(TokenKind.EQ, None)
         else:
             return Token(TokenKind.UNKOWN, ch)
 
@@ -163,6 +166,14 @@ class Print(AST):
         else:
             return None
 
+class FunctionNode(AST):
+    def __init__(self, name: AST, perams: AST, body: AST):
+        self.name = name
+        self.perams = perams
+        self.body = body
+    def __repr__(self):
+        return f'func {self.name}{self.perams} { {self.body} }'
+
 class VarExpr(AST):
     def __init__(self, name: str):
         self.name = name 
@@ -212,6 +223,8 @@ class BinOp(AST):
             return self.first.eval(state) * self.second.eval(state)
         elif self.op == 'div':
             return self.first.eval(state) / self.second.eval(state)
+        elif self.op == '==':
+            return self.first.eval(state)
 
 class Parser:
     token = Token(TokenKind.UNKNOWN, "dummy")
@@ -251,7 +264,7 @@ class Parser:
         then = self.parse_block()
         els = None
         if self.accept(TokenKind.ELSE):
-            els = parse_block()
+            els = self.parse_block()
         return IfExpr(cond, then, els)
 
     def parse_binop(self):
@@ -259,11 +272,6 @@ class Parser:
         first = self.parse_expr()
         second = self.parse_expr()
         return BinOp(op, first, second)
-
-    def parse_block(self):
-        self.expect(TokenKind.THEN).data
-        parse_statements()
-        self.expect(TokenKind.BLOCKEND).data
 
     def parse_file_open(self):
         self.expect(TokenKind.OPEN).data
@@ -293,6 +301,12 @@ class Parser:
             right = self.parse_expr()
             left = SequenceNode(left, right)
         return left
+
+    def parse_block(self):
+        self.expect(TokenKind.THEN).data
+        a = self.parse_statements()
+        self.expect(TokenKind.BLOCKEND).data
+        return a
 
     def parse_print(self):
         self.expect(TokenKind.PRINT)
