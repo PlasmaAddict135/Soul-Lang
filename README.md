@@ -5,4 +5,4 @@ SIO coding language! (Selective Introspection Order)
 CURRENTLY BEING REWORKED
 
 # Syntax
-CURRENTLY BEING REWORKED
+Major changes
