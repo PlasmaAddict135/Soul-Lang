@@ -15,7 +15,7 @@ class Lexer:
     src = []
     idx = 0
     kws = defaultdict(lambda: TokenKind.IDENT)
-
+    
     def __init__(self, src):
         self.src = src 
         self.kws['if'] = TokenKind.IF
@@ -235,13 +235,19 @@ class Parser:
             return self.consume()
         raise SyntaxError("Expected token kind {}, found {}".format(kind, self.token.kind))
 
+    def accept(self, kind: TokenKind):
+        if self.token.kind == kind:
+            return True
+        else:
+            return False
+
     def parse_if(self):
         self.expect(TokenKind.IF)
-        cond = self.parse_expr()
+        cond = self.parse_statements()
         self.expect(TokenKind.THEN)
-        csq = self.parse_expr()
+        csq = self.parse_statements()
         self.expect(TokenKind.ELSE)
-        alt = self.parse_expr()
+        alt = self.parse_statements()
         return IfExpr(cond, csq, alt)
 
     def parse_binop(self):
@@ -272,11 +278,12 @@ class Parser:
         return Assign(ident, value)
 
     # NEW: FOR SEQUENCE NODE
-    def parse_sc(self):
-        first = self.parse_expr()
-        self.expect(TokenKind.ENDLN)
-        second = self.parse_expr()
-        return SequenceNode(first, second)
+    def parse_statements(self):
+        left = self.parse_expr()
+        while self.accept(TokenKind.ENDLN):
+            right = self.parse_expr()
+            left = SequenceNode(left, right)
+        return left
 
     def parse_print(self):
         self.expect(TokenKind.PRINT)
@@ -309,8 +316,7 @@ class Parser:
         elif t == TokenKind.OPEN:
             return self.parse_file_open()
         # NEW: FOR SEQUENCE NODE
-        elif t ==TokenKind.ENDLN:
-            return self.parse_sc()
+
         else:
             raise SyntaxError("Unexpected token {}".format(t))
 
@@ -318,4 +324,4 @@ class Parser:
 current_state = State()
 while True:
     inpt = input('>>> ')
-    print(Parser(Lexer(inpt)).parse_expr().eval(current_state))
+    print(Parser(Lexer(inpt)).parse_statements().eval(current_state))
