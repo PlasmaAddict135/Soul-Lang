@@ -236,7 +236,8 @@ class Parser:
         raise SyntaxError("Expected token kind {}, found {}".format(kind, self.token.kind))
 
     def accept(self, kind: TokenKind):
-        if self.token.kind == kind:
+        if self.token is not None and self.token.kind == kind:
+            self.consume()
             return True
         else:
             return False
