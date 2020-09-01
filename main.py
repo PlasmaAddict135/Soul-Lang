@@ -1,7 +1,7 @@
 from enum import Enum
 from collections import defaultdict
 
-TokenKind = Enum('TokenKind', 'IF THEN ELSE IDENT INT OPERATOR PRINT STRING VAR ASSIGN UNKNOWN EOF ENDLN OPEN METHOD')
+TokenKind = Enum('TokenKind', 'IF THEN ELSE IDENT INT OPERATOR PRINT STRING VAR ASSIGN UNKNOWN EOF ENDLN OPEN METHOD BLOCKEND')
 
 class Token:    
     def __init__(self, kind: TokenKind, data):
@@ -77,6 +77,9 @@ class Lexer:
         elif ch == ';':
             self.idx += 1
             return Token(TokenKind.ENDLN, None)
+        elif ch == '}':
+            self.idx += 1
+            return Token(TokenKind.BLOCKEND, None)
         else:
             return Token(TokenKind.UNKOWN, ch)
 
@@ -190,7 +193,7 @@ class IfExpr(AST):
     def eval(self, state):
         if self.cond.eval(state):
             return self.left.eval(state)
-        else:
+        elif self.right != None:
             return self.right.eval(state)
 
 class BinOp(AST):
@@ -245,17 +248,22 @@ class Parser:
     def parse_if(self):
         self.expect(TokenKind.IF)
         cond = self.parse_statements()
-        self.expect(TokenKind.THEN)
-        csq = self.parse_statements()
-        self.expect(TokenKind.ELSE)
-        alt = self.parse_statements()
-        return IfExpr(cond, csq, alt)
+        then = self.parse_block()
+        els = None
+        if self.accept(TokenKind.ELSE):
+            els = parse_block()
+        return IfExpr(cond, then, els)
 
     def parse_binop(self):
         op = self.expect(TokenKind.OPERATOR).data 
         first = self.parse_expr()
         second = self.parse_expr()
         return BinOp(op, first, second)
+
+    def parse_block(self):
+        self.expect(TokenKind.THEN).data
+        parse_statements()
+        self.expect(TokenKind.BLOCKEND).data
 
     def parse_file_open(self):
         self.expect(TokenKind.OPEN).data
