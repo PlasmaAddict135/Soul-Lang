@@ -1,7 +1,7 @@
 from enum import Enum
 from collections import defaultdict
 
-TokenKind = Enum('TokenKind', 'IF THEN ELSE IDENT INT OPERATOR PRINT STRING VAR ASSIGN UNKNOWN EOF ENDLN OPEN METHOD BLOCKEND EQ')
+TokenKind = Enum('TokenKind', 'IF THEN ELSE IDENT INT OPERATOR PRINT STRING VAR ASSIGN UNKNOWN EOF ENDLN OPEN METHOD BLOCKEND EQ INPUT')
 
 class Token:    
     def __init__(self, kind: TokenKind, data):
@@ -83,6 +83,9 @@ class Lexer:
         elif ch == '==':
             self.idx += 1
             return Token(TokenKind.EQ, None)
+        elif ch == 'input':
+            self.idx += 1
+            return Token(TokenKind.INPUT, None)
         else:
             return Token(TokenKind.UNKOWN, ch)
 
@@ -167,12 +170,25 @@ class Print(AST):
             return None
 
 class FunctionNode(AST):
-    def __init__(self, name: AST, perams: AST, body: AST):
+    def __init__(self, name: AST, body: AST):
         self.name = name
-        self.perams = perams
         self.body = body
     def __repr__(self):
         return f'func {self.name}{self.perams} { {self.body} }'
+    def eval(self, state):
+        return state.bind(self.name, self.body)
+
+class Call(AST):
+    def __init__(self, name):
+        pass
+
+class InputNode(AST):
+    def __init__(self, prompt: AST):
+        self.prompt = prompt
+    def __repr__(self):
+        return f'input {self.prompt}'
+    def eval(self, state):
+        return input(self.prompt.eval(state))
 
 class VarExpr(AST):
     def __init__(self, name: str):
@@ -208,7 +224,7 @@ class IfExpr(AST):
             return self.right.eval(state)
 
 class BinOp(AST):
-    def __init__(self, op, first: AST, second: AST):
+    def __init__(self, first: AST, op, second: AST):
         self.op = op
         self.first = first
         self.second = second
@@ -273,6 +289,44 @@ class Parser:
         second = self.parse_expr()
         return BinOp(op, first, second)
 
+    def prece(self, op: TokenKind):
+        if op == TokenKind.PLUS:
+            return 1
+        if op == TokenKind.MUL:
+            return 2
+        if op == TokenKind.DIV:
+            return 2
+
+    def next_is_operator(self):
+        current_token = self.token.kind
+        current_token in [TokenKind.PLUS, TokenKind.MINUS, TokenKind.MUL, TokenKind.DIV]
+
+    def parse_operator_expr(self):
+        first = self.parse_expr()
+        if self.next_is_operator():   # some kind of function to detect if the next token is an operator
+            op = self.parse_operator()
+            return self.parse_binop(first, op)  # parse binop needs to be given the previous value and 
+                                                # operator, the way i wrote it
+        else:
+            return first
+
+    def parse_operator(self):
+        return next(self.lexer)
+
+
+    def parse_binopWIP(self, first, op):
+        second = self.parse_expr()
+        if self.next_is_operator():
+            next_ = self.parse_operator()
+            if prece(op) >= prece(next_):
+                return self.parse_binop(BinOp(first, op, second), next_)  # Binop(first, op, second) becomes the 
+                                                                    # first for the recursive call
+            else:  # prece(next) > prece(op)
+                return BinOp(first, op, self.parse_binop(second, next_))  # recurse to the right, and make the 
+                                                                    # resulting expr the second for this call
+        else:
+            return BinOp(first, op, second)
+
     def parse_file_open(self):
         self.expect(TokenKind.OPEN).data
         file = self.parse_string()
@@ -282,6 +336,11 @@ class Parser:
     def parse_num(self):
         data = self.expect(TokenKind.INT).data
         return NumExpr(data)
+
+    def parse_input(self):
+        self.expect(TokenKind.INPUT)
+        prompt = self.parse_expr()
+        return InputNode(prompt)
 
     def parse_var(self):
         data = self.expect(TokenKind.IDENT).data
@@ -338,7 +397,8 @@ class Parser:
             return self.parse_assign()
         elif t == TokenKind.OPEN:
             return self.parse_file_open()
-        # NEW: FOR SEQUENCE NODE
+        elif t == TokenKind.INPUT:
+            return self.parse_input()
 
         else:
             raise SyntaxError("Unexpected token {}".format(t))
