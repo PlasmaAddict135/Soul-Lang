@@ -73,6 +73,7 @@ class Lexer:
             return self.lex_string_literal()
         else:
             kind = self.kws[ch]
+            self.idx += 1
             if kind == TokenKind.IDENT:
                 kind = TokenKind.UNKNOWN
             return Token(kind, ch)
@@ -219,19 +220,20 @@ class BinOp(AST):
     def __repr__(self):
         return "{} {} {}".format(self.first,self.op,self.second)
     def eval(self, state):
-        if self.op == '+':
+        if self.op == TokenKind.PLUS:
             return self.first.eval(state) + self.second.eval(state)
-        elif self.op == '-':
+        elif self.op == TokenKind.MINUS:
             return self.first.eval(state) - self.second.eval(state)
-        elif self.op == '*':
+        elif self.op == TokenKind.MUL:
             return self.first.eval(state) * self.second.eval(state)
-        elif self.op == '/':
+        elif self.op == TokenKind.DIV:
             return self.first.eval(state) / self.second.eval(state)
-        elif self.op == '==':
-            return self.first.eval(state)
+        elif self.op == TokenKind.EQ:
+            return self.first.eval(state) #WIP not working
 
 class Parser:
     token = Token(TokenKind.UNKNOWN, "dummy")
+    operators = [TokenKind.PLUS, TokenKind.MINUS, TokenKind.MUL, TokenKind.DIV]
 
     def __init__(self, lexer: Lexer):
         self.lexer = lexer
@@ -282,7 +284,7 @@ class Parser:
             return 1
 
     def next_is_operator(self):
-        return self.token is not None and self.token.kind in [TokenKind.PLUS, TokenKind.MINUS, TokenKind.MUL, TokenKind.DIV]
+        return self.token is not None and self.token.kind in operators
 
     def parse_operator_expr(self):
         first = self.parse_term()
@@ -293,14 +295,18 @@ class Parser:
         else:
             return first
 
+    def expect_any(self, kinds: list(TokenKind)):
+        if self.token.kind in kinds:
+            return self.consume()
+
     def parse_operator(self):
-        return next(self.lexer)
+        return self.expect_any(operators)
 
     def parse_binop(self, first, op):
         second = self.parse_term()
         if self.next_is_operator():
             next_ = self.parse_operator()
-            if prece(op) >= prece(next_):
+            if self.prece(op) >= self.prece(next_):
                 return self.parse_binop(BinOp(first, op, second), next_)  # Binop(first, op, second) becomes the 
                                                                     # first for the recursive call
             else:  # prece(next) > prece(op)
