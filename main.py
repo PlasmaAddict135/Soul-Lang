@@ -20,6 +20,7 @@ class Lexer:
         self.src = src 
         self.kws['if'] = TokenKind.IF
         self.kws['{'] = TokenKind.THEN
+        self.kws['}'] = TokenKind.BLOCKEND
         self.kws['else'] = TokenKind.ELSE
         self.kws['+'] = TokenKind.PLUS
         self.kws['-'] = TokenKind.SUB
@@ -30,6 +31,10 @@ class Lexer:
         self.kws['='] = TokenKind.ASSIGN
         self.kws['open'] = TokenKind.OPEN
         self.kws['r'] = TokenKind.METHOD
+        self.kws[';'] = TokenKind.ENDLN
+        self.kws['='] = TokenKind.ASSIGN
+        self.kws['=='] = TokenKind.EQ
+        self.kws['input'] = TokenKind.INPUT
     
     def lex_num(self):
         match = ""
@@ -68,7 +73,7 @@ class Lexer:
         elif ch == '"':
             return self.lex_string_literal()
         else:
-            kind = self.kws[match]
+            kind = self.kws[ch]
             if kind == TokenKind.IDENT:
                 kind = TokenKind.UNKNOWN
             return Token(kind, ch)
