@@ -369,6 +369,15 @@ class Parser:
         data = self.expect(TokenKind.STRING).data
         return String(data)
 
+    def parse_term(self):
+        t = self.token.kind
+        if t == TokenKind.IDENT:
+            return self.parse_var()
+        elif t == TokenKind.INT:
+            return self.parse_num()
+        elif t == TokenKind.STRING:
+            return self.parse_string()
+
     # TO EXECUTE EACH AST NODE WITH ITS CASE    
     def parse_expr(self):
         if self.token is None:
@@ -376,16 +385,10 @@ class Parser:
         t = self.token.kind
         if t == TokenKind.IF:
             return self.parse_if()
-        elif t == TokenKind.IDENT:
-            return self.parse_var()
-        elif t == TokenKind.INT:
-            return self.parse_num()
         elif t == TokenKind.OPERATOR:
             return self.parse_binop()
         elif t == TokenKind.PRINT:
             return self.parse_print()
-        elif t == TokenKind.STRING:
-            return self.parse_string()
         elif t == TokenKind.VAR:
             return self.parse_assign()
         elif t == TokenKind.OPEN:
