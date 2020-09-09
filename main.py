@@ -67,33 +67,11 @@ class Lexer:
             return self.lex_num()
         elif ch == '"':
             return self.lex_string_literal()
-        elif ch == '=':
-            self.idx += 1
-            return Token(TokenKind.ASSIGN, None)
-        elif ch == '{':
-            self.idx += 1
-            return Token(TokenKind.THEN, None)
-        # NEW: FOR SEQUENCE NODE
-        elif ch == ';':
-            self.idx += 1
-            return Token(TokenKind.ENDLN, None)
-        elif ch == '}':
-            self.idx += 1
-            return Token(TokenKind.BLOCKEND, None)
-        elif ch == '(':
-            self.idx += 1
-            return Token(TokenKind.LPAREN, None)
-        elif ch == ')':
-            self.idx += 1
-            return Token(TokenKind.RPAREN, None)
-        elif ch == '==':
-            self.idx += 1
-            return Token(TokenKind.EQ, None)
-        elif ch == 'input':
-            self.idx += 1
-            return Token(TokenKind.INPUT, None)
         else:
-            return Token(TokenKind.UNKOWN, ch)
+            kind = self.kws[match]
+            if kind == TokenKind.IDENT:
+                kind = TokenKind.UNKNOWN
+            return Token(kind, ch)
 
     # FOR EVALUATING STRINGS
     def lex_string_literal(self):
@@ -403,8 +381,6 @@ class Parser:
         t = self.token.kind
         if t == TokenKind.IF:
             return self.parse_if()
-        elif t == TokenKind.OPERATOR:
-            return self.parse_binop()
         elif t == TokenKind.PRINT:
             return self.parse_print()
         elif t == TokenKind.VAR:
