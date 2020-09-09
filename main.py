@@ -284,7 +284,7 @@ class Parser:
             return 1
 
     def next_is_operator(self):
-        return self.token is not None and self.token.kind in operators
+        return self.token is not None and self.token.kind in self.operators
 
     def parse_operator_expr(self):
         first = self.parse_term()
@@ -300,7 +300,7 @@ class Parser:
             return self.consume()
 
     def parse_operator(self):
-        return self.expect_any(operators)
+        return self.expect_any(self.operators).kind
 
     def parse_binop(self, first, op):
         second = self.parse_term()
