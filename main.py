@@ -283,12 +283,6 @@ class Parser:
             els = self.parse_block()
         return IfExpr(cond, then, els)
 
-    def parse_binop(self):
-        op = self.expect(TokenKind.OPERATOR).data 
-        first = self.parse_expr()
-        second = self.parse_expr()
-        return BinOp(op, first, second)
-
     def prece(self, op: TokenKind):
         if op == TokenKind.PLUS:
             return 1
@@ -313,8 +307,7 @@ class Parser:
     def parse_operator(self):
         return next(self.lexer)
 
-
-    def parse_binopWIP(self, first, op):
+    def parse_binop(self, first, op):
         second = self.parse_expr()
         if self.next_is_operator():
             next_ = self.parse_operator()
