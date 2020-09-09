@@ -1,7 +1,7 @@
 from enum import Enum
 from collections import defaultdict
 
-TokenKind = Enum('TokenKind', 'IF THEN ELSE IDENT INT OPERATOR PRINT STRING VAR ASSIGN UNKNOWN EOF ENDLN OPEN METHOD BLOCKEND EQ INPUT DIV MUL SUB PLUS LPAREN RPAREN')
+TokenKind = Enum('TokenKind', 'IF THEN ELSE IDENT INT OPERATOR PRINT STRING VAR ASSIGN UNKNOWN EOF ENDLN OPEN METHOD BLOCKEND EQ INPUT DIV MUL MINUS PLUS LPAREN RPAREN')
 
 class Token:    
     def __init__(self, kind: TokenKind, data):
@@ -23,7 +23,7 @@ class Lexer:
         self.kws['}'] = TokenKind.BLOCKEND
         self.kws['else'] = TokenKind.ELSE
         self.kws['+'] = TokenKind.PLUS
-        self.kws['-'] = TokenKind.SUB
+        self.kws['-'] = TokenKind.MINUS
         self.kws['*'] = TokenKind.MUL
         self.kws['/'] = TokenKind.DIV
         self.kws['print'] = TokenKind.PRINT
@@ -65,7 +65,6 @@ class Lexer:
             raise StopIteration
         self.consume_whitespace()
         ch = self.src[self.idx]
-
         if ch.isalpha():
             return self.lex_ident()
         elif ch.isdigit():
@@ -279,12 +278,11 @@ class Parser:
             return 2
         if op == TokenKind.DIV:
             return 2
-        if op == TokenKind.SUB:
+        if op == TokenKind.MINUS:
             return 1
 
     def next_is_operator(self):
-        current_token = self.token.kind
-        current_token in [TokenKind.PLUS, TokenKind.MINUS, TokenKind.MUL, TokenKind.DIV]
+        return self.token is not None and self.token.kind in [TokenKind.PLUS, TokenKind.MINUS, TokenKind.MUL, TokenKind.DIV]
 
     def parse_operator_expr(self):
         first = self.parse_term()
