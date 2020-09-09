@@ -1,7 +1,7 @@
 from enum import Enum
 from collections import defaultdict
 
-TokenKind = Enum('TokenKind', 'IF THEN ELSE IDENT INT OPERATOR PRINT STRING VAR ASSIGN UNKNOWN EOF ENDLN OPEN METHOD BLOCKEND EQ INPUT')
+TokenKind = Enum('TokenKind', 'IF THEN ELSE IDENT INT OPERATOR PRINT STRING VAR ASSIGN UNKNOWN EOF ENDLN OPEN METHOD BLOCKEND EQ INPUT DIV MUL SUB PLUS LPAREN RPAREN')
 
 class Token:    
     def __init__(self, kind: TokenKind, data):
@@ -21,10 +21,10 @@ class Lexer:
         self.kws['if'] = TokenKind.IF
         self.kws['{'] = TokenKind.THEN
         self.kws['else'] = TokenKind.ELSE
-        self.kws['plus'] = TokenKind.OPERATOR
-        self.kws['min'] = TokenKind.OPERATOR
-        self.kws['mul'] = TokenKind.OPERATOR
-        self.kws['div'] = TokenKind.OPERATOR
+        self.kws['+'] = TokenKind.PLUS
+        self.kws['-'] = TokenKind.SUB
+        self.kws['*'] = TokenKind.MUL
+        self.kws['/'] = TokenKind.DIV
         self.kws['print'] = TokenKind.PRINT
         self.kws['var'] = TokenKind.VAR
         self.kws['='] = TokenKind.ASSIGN
@@ -80,6 +80,12 @@ class Lexer:
         elif ch == '}':
             self.idx += 1
             return Token(TokenKind.BLOCKEND, None)
+        elif ch == '(':
+            self.idx += 1
+            return Token(TokenKind.LPAREN, None)
+        elif ch == ')':
+            self.idx += 1
+            return Token(TokenKind.RPAREN, None)
         elif ch == '==':
             self.idx += 1
             return Token(TokenKind.EQ, None)
@@ -231,13 +237,13 @@ class BinOp(AST):
     def __repr__(self):
         return "{} {} {}".format(self.first,self.op,self.second)
     def eval(self, state):
-        if self.op == 'plus':
+        if self.op == '+':
             return self.first.eval(state) + self.second.eval(state)
-        elif self.op == 'min':
+        elif self.op == '-':
             return self.first.eval(state) - self.second.eval(state)
-        elif self.op == 'mul':
+        elif self.op == '*':
             return self.first.eval(state) * self.second.eval(state)
-        elif self.op == 'div':
+        elif self.op == '/':
             return self.first.eval(state) / self.second.eval(state)
         elif self.op == '==':
             return self.first.eval(state)
@@ -290,13 +296,15 @@ class Parser:
             return 2
         if op == TokenKind.DIV:
             return 2
+        if op == TokenKind.SUB:
+            return 1
 
     def next_is_operator(self):
         current_token = self.token.kind
         current_token in [TokenKind.PLUS, TokenKind.MINUS, TokenKind.MUL, TokenKind.DIV]
 
     def parse_operator_expr(self):
-        first = self.parse_expr()
+        first = self.parse_term()
         if self.next_is_operator():   # some kind of function to detect if the next token is an operator
             op = self.parse_operator()
             return self.parse_binop(first, op)  # parse binop needs to be given the previous value and 
@@ -308,7 +316,7 @@ class Parser:
         return next(self.lexer)
 
     def parse_binop(self, first, op):
-        second = self.parse_expr()
+        second = self.parse_term()
         if self.next_is_operator():
             next_ = self.parse_operator()
             if prece(op) >= prece(next_):
@@ -360,6 +368,12 @@ class Parser:
         self.expect(TokenKind.BLOCKEND).data
         return a
 
+    def parse_parenthesized_expr(self):
+        self.expect(TokenKind.LPAREN)
+        data = self.parse_operator_expr()
+        self.expect(TokenKind.RPAREN)
+        return data
+
     def parse_print(self):
         self.expect(TokenKind.PRINT)
         d = self.parse_expr()
@@ -377,6 +391,10 @@ class Parser:
             return self.parse_num()
         elif t == TokenKind.STRING:
             return self.parse_string()
+        elif t == TokenKind.LPAREN:
+            return self.parse_parenthesized_expr()
+        else:
+            raise SyntaxError("Unexpected token {}".format(t))
 
     # TO EXECUTE EACH AST NODE WITH ITS CASE    
     def parse_expr(self):
@@ -395,9 +413,8 @@ class Parser:
             return self.parse_file_open()
         elif t == TokenKind.INPUT:
             return self.parse_input()
-
         else:
-            raise SyntaxError("Unexpected token {}".format(t))
+            return self.parse_operator_expr()
 
 # INPUTS
 current_state = State()
