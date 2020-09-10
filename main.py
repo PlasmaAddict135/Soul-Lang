@@ -1,7 +1,7 @@
 from enum import Enum
 from collections import defaultdict
 
-TokenKind = Enum('TokenKind', 'IF THEN ELSE IDENT INT OPERATOR PRINT STRING VAR ASSIGN UNKNOWN EOF ENDLN OPEN METHOD BLOCKEND EQ INPUT DIV MUL MINUS PLUS LPAREN RPAREN')
+TokenKind = Enum('TokenKind', 'IF THEN ELSE IDENT INT OPERATOR PRINT STRING VAR ASSIGN UNKNOWN EOF ENDLN OPEN METHOD BLOCKEND EQ INPUT DIV MUL MINUS PLUS LPAREN RPAREN FUNC RUN')
 
 class Token:    
     def __init__(self, kind: TokenKind, data):
@@ -35,6 +35,8 @@ class Lexer:
         self.kws['='] = TokenKind.ASSIGN
         self.kws['=='] = TokenKind.EQ
         self.kws['input'] = TokenKind.INPUT
+        self.kws['func'] = TokenKind.FUNC
+        self.kws['#run'] = TokenKind.RUN
     
     def lex_num(self):
         match = ""
@@ -186,6 +188,16 @@ class VarExpr(AST):
         return self.name
     def eval(self, state):
         return state.lookup(self.name)
+
+class RunFile(AST):
+    def __init__(self, file: AST):
+        self.file = file
+    def __repr__(self):
+        return f'#run {self.file}'
+    def eval(self, state):
+        ftr = open(self.file, 'r').read()
+        print(Parser(Lexer(ftr)).parse_statements().eval(current_state))
+        return None
 
 # WIP
 class Open(AST):
@@ -366,6 +378,11 @@ class Parser:
         d = self.parse_expr()
         return Print(d)
 
+    def parse_run(self):
+        self.expect(TokenKind.RUN)
+        file = self.expect(TokenKind.STRING).data
+        return RunFile(file)
+
     def parse_string(self):
         data = self.expect(TokenKind.STRING).data
         return String(data)
@@ -398,6 +415,8 @@ class Parser:
             return self.parse_file_open()
         elif t == TokenKind.INPUT:
             return self.parse_input()
+        elif t == TokenKind.RUN:
+            return self.parse_run()
         else:
             return self.parse_operator_expr()
 
