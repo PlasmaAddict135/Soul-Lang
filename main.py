@@ -36,7 +36,6 @@ class Lexer:
         self.kws['=='] = TokenKind.EQ
         self.kws['input'] = TokenKind.INPUT
         self.kws['func'] = TokenKind.FUNC
-        self.kws['#run'] = TokenKind.RUN
     
     def lex_num(self):
         match = ""
@@ -165,13 +164,18 @@ class FunctionNode(AST):
         self.name = name
         self.body = body
     def __repr__(self):
-        return f'func {self.name}{self.perams} { {self.body} }'
+        return f'func {self.name} { {self.body} }'
     def eval(self, state):
         return state.bind(self.name, self.body)
 
 class Call(AST):
-    def __init__(self, name):
-        pass
+    def __init__(self, name: str):
+        self.name = name
+    def __repr__(self):
+        return self.name
+    def eval(self, state):
+        callable_ = state.lookup(self.name)
+        return callable_.eval(state)
 
 class InputNode(AST):
     def __init__(self, prompt: AST):
@@ -188,16 +192,6 @@ class VarExpr(AST):
         return self.name
     def eval(self, state):
         return state.lookup(self.name)
-
-class RunFile(AST):
-    def __init__(self, file: AST):
-        self.file = file
-    def __repr__(self):
-        return f'#run {self.file}'
-    def eval(self, state):
-        ftr = open(self.file, 'r').read()
-        print(Parser(Lexer(ftr)).parse_statements().eval(current_state))
-        return None
 
 # WIP
 class Open(AST):
@@ -353,7 +347,6 @@ class Parser:
         value = self.parse_expr()
         return Assign(ident, value)
 
-    # NEW: FOR SEQUENCE NODE
     def parse_statements(self):
         left = self.parse_expr()
         while self.accept(TokenKind.ENDLN):
@@ -378,10 +371,17 @@ class Parser:
         d = self.parse_expr()
         return Print(d)
 
-    def parse_run(self):
-        self.expect(TokenKind.RUN)
-        file = self.expect(TokenKind.STRING).data
-        return RunFile(file)
+    def parse_function(self):
+        self.expect(TokenKind.FUNC)
+        name = self.expect(TokenKind.IDENT).data
+        code = self.parse_block()
+        return FunctionNode(name, code)
+
+    def parse_call(self):
+        name = self.expect(TokenKind.IDENT).data
+        self.expect(TokenKind.LPAREN)
+        self.expect(TokenKind.RPAREN)
+        return Call(name)
 
     def parse_string(self):
         data = self.expect(TokenKind.STRING).data
@@ -390,7 +390,10 @@ class Parser:
     def parse_term(self):
         t = self.token.kind
         if t == TokenKind.IDENT:
-            return self.parse_var()
+            if self.accept(TokenKind.LPAREN):
+                return self.parse_call()
+            else:
+                return self.parse_var()
         elif t == TokenKind.INT:
             return self.parse_num()
         elif t == TokenKind.STRING:
@@ -415,8 +418,6 @@ class Parser:
             return self.parse_file_open()
         elif t == TokenKind.INPUT:
             return self.parse_input()
-        elif t == TokenKind.RUN:
-            return self.parse_run()
         else:
             return self.parse_operator_expr()
 
