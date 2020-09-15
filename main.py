@@ -110,7 +110,6 @@ class State:
     def lookup(self, name):
         return self.vals[name]
 
-# NEW: FOR SEQUENCE NODE
 class SequenceNode(AST):
   def __init__(self, first, second):
     self.first = first
@@ -160,11 +159,12 @@ class Print(AST):
             return None
 
 class FunctionNode(AST):
-    def __init__(self, name: AST, body: AST):
+    def __init__(self, name: AST, params: list(), body: AST):
         self.name = name
         self.body = body
+        self.params = params
     def __repr__(self):
-        return f'func {self.name} { {self.body} }'
+        return f'func {self.name}({self.params}) { {self.body} }'
     def eval(self, state):
         return state.bind(self.name, self.body)
 
@@ -380,6 +380,7 @@ class Parser:
     def parse_call(self):
         name = self.expect(TokenKind.IDENT).data
         self.expect(TokenKind.LPAREN)
+        self.accept(TokenKind.IDENT)
         self.expect(TokenKind.RPAREN)
         return Call(name)
 
