@@ -1,7 +1,9 @@
 from enum import Enum
 from collections import defaultdict
+from os import error
+from typing import List, Dict
 
-TokenKind = Enum('TokenKind', 'IF THEN ELSE IDENT INT OPERATOR PRINT STRING VAR ASSIGN UNKNOWN EOF ENDLN OPEN METHOD BLOCKEND EQ INPUT DIV MUL MINUS PLUS LPAREN RPAREN FUNC RUN')
+TokenKind = Enum('TokenKind', 'IF THEN ELSE IDENT INT OPERATOR PRINT STRING VAR ASSIGN UNKNOWN EOF ENDLN OPEN METHOD BLOCKEND EQ INPUT DIV MUL MINUS PLUS LPAREN RPAREN FUNC RUN COMMA NEQ GREAT LESS RETURN ALGEBRA ALC')
 
 class Token:    
     def __init__(self, kind: TokenKind, data):
@@ -21,6 +23,8 @@ class Lexer:
         self.kws['if'] = TokenKind.IF
         self.kws['{'] = TokenKind.THEN
         self.kws['}'] = TokenKind.BLOCKEND
+        self.kws['('] = TokenKind.LPAREN 
+        self.kws[')'] = TokenKind.RPAREN
         self.kws['else'] = TokenKind.ELSE
         self.kws['+'] = TokenKind.PLUS
         self.kws['-'] = TokenKind.MINUS
@@ -32,11 +36,19 @@ class Lexer:
         self.kws['open'] = TokenKind.OPEN
         self.kws['r'] = TokenKind.METHOD
         self.kws[';'] = TokenKind.ENDLN
-        self.kws['='] = TokenKind.ASSIGN
+        self.kws[','] = TokenKind.COMMA
         self.kws['=='] = TokenKind.EQ
+        self.kws['is'] = TokenKind.EQ
+        self.kws['!='] = TokenKind.NEQ
+        self.kws['>'] = TokenKind.GREAT
+        self.kws['<'] = TokenKind.LESS
         self.kws['input'] = TokenKind.INPUT
         self.kws['func'] = TokenKind.FUNC
-    
+        self.kws['return'] = TokenKind.RETURN
+        self.kws['sio'] = TokenKind.RUN
+        self.kws['alg'] = TokenKind.ALGEBRA
+        self.kws['@'] = TokenKind.ALC
+
     def lex_num(self):
         match = ""
         while self.idx < len(self.src) and self.src[self.idx].isdigit():
@@ -104,7 +116,9 @@ class AST:
     pass 
 
 class State:
-    vals = {}
+    # vals = {}
+    def __init__(self):
+        self.vals = dict()
     def bind(self, name, val):
         self.vals[name] = val
     def lookup(self, name):
@@ -127,6 +141,22 @@ class Assign(AST):
     def eval(self, state):
         state.bind(self.var, self.assignment.eval(state))
 
+class AlgerbraicVariable(AST):
+    def __init__(self, var: AST):
+        self.var = var
+    def __repr__(self):
+        return self.var
+    def eval(self, state):
+        state.bind(self.var, None)
+
+class AlgebraicCalling(AST):
+    def __init__(self, name):
+        self.name = name
+    def __repr__(self):
+        return self.name
+    def eval(self, state):
+        state.lookup(self.name)
+
 class NumExpr(AST):
     def __init__(self, val: int):
         self.val = val
@@ -143,6 +173,10 @@ class String(AST):
     def eval(self, state):
         return self.string
 
+class ReturnResult(Exception):
+    pass
+    #Used for handling returns, since returns are technically errors to stop the process
+
 ######################################
 # RUN CLASSES
 ######################################
@@ -158,25 +192,54 @@ class Print(AST):
         else:
             return None
 
+class ReturnError:
+    def __init__(self, value):
+        self.value = value
+    def __repr__(self):
+        return self.value
+    def eval(self, state):
+        return self.value.eval(state)
+
+class ReturnNode(ReturnResult):
+    def __init__(self, value):
+        self.value = value
+    def __repr__(self):
+        return self.value
+    def eval(self, state):
+        raise ReturnError(self.value)
+
 class FunctionNode(AST):
-    def __init__(self, name: AST, params: list(), body: AST):
+    def __init__(self, name: AST, params: List[str], body: AST):
         self.name = name
+        self.params = params
         self.body = body
         self.params = params
     def __repr__(self):
-        return f'func {self.name}({self.params}) { {self.body} }'
+        return f'func {self.name} ({self.params}) { {self.body} }'
     def eval(self, state):
-        return state.bind(self.name, self.body)
+        return state.bind(self.name, self)
 
+# Thanks Crunch! Very based!
 class Call(AST):
-    def __init__(self, name: str):
+    def __init__(self, name: str, args: List[AST]):
         self.name = name
+        self.args = args
     def __repr__(self):
         return self.name
     def eval(self, state):
         callable_ = state.lookup(self.name)
-        return callable_.eval(state)
-
+        state_copy = State()
+        state_copy.vals = state.vals.copy()
+        if not isinstance(callable_, FunctionNode): callable_ = callable_.eval()
+        if isinstance(callable_, FunctionNode):
+            if len(callable_.params) == len(self.args):
+                for (param, arg) in zip(callable_.params, self.args):
+                    state_copy.bind(param, arg.eval(state))
+                    # evaluate the argument before binding it
+                return callable_.body.eval(state_copy)
+            else: raise SyntaxError("FunctionCallError: Invalid number of args")            
+        else: raise SyntaxError("FunctionCallError: This identifier does not belong to a function")
+       
 class InputNode(AST):
     def __init__(self, prompt: AST):
         self.prompt = prompt
@@ -192,6 +255,19 @@ class VarExpr(AST):
         return self.name
     def eval(self, state):
         return state.lookup(self.name)
+
+class Run(AST):
+    def __init__(self, file: AST):
+        self.file = file
+    def __repr__(self):
+        return self.file
+    def eval(self, state):
+        f = open(self.file+'.sio', 'r')
+        inpt = f.read()
+        f.close()
+        ast = Parser(Lexer(inpt)).parse_statements()
+        return ast.eval(state)
+        
 
 # WIP
 class Open(AST):
@@ -211,7 +287,7 @@ class IfExpr(AST):
         self.left = left 
         self.right = right
     def __repr__(self):
-        return "if {} { {} } else {}".format(self.cond, self.left, self.right)
+        return "if {} { {} } else { {} }".format(self.cond, self.left, self.right)
     def eval(self, state):
         if self.cond.eval(state):
             return self.left.eval(state)
@@ -224,7 +300,7 @@ class BinOp(AST):
         self.first = first
         self.second = second
     def __repr__(self):
-        return "{} {} {}".format(self.first,self.op,self.second)
+        return "{} {} {}".format(self.first, self.op,self.second)
     def eval(self, state):
         if self.op == TokenKind.PLUS:
             return self.first.eval(state) + self.second.eval(state)
@@ -235,11 +311,18 @@ class BinOp(AST):
         elif self.op == TokenKind.DIV:
             return self.first.eval(state) / self.second.eval(state)
         elif self.op == TokenKind.EQ:
-            return self.first.eval(state) #WIP not working
-
+            return self.first.eval(state) == self.second.eval(state)
+        elif self.op == TokenKind.NEQ:
+            return self.first.eval(state) != self.second.eval(state)
+        elif self.op == TokenKind.GREAT:
+            return self.first.eval(state) > self.second.eval(state)
+        elif self.op == TokenKind.LESS:
+            return self.first.eval(state) < self.second.eval(state)
+# if 1 == 1 {print "ea"}
+        
 class Parser:
     token = Token(TokenKind.UNKNOWN, "dummy")
-    operators = [TokenKind.PLUS, TokenKind.MINUS, TokenKind.MUL, TokenKind.DIV]
+    operators = [TokenKind.PLUS, TokenKind.MINUS, TokenKind.MUL, TokenKind.DIV, TokenKind.EQ, TokenKind.NEQ, TokenKind.LESS, TokenKind.GREAT]
 
     def __init__(self, lexer: Lexer):
         self.lexer = lexer
@@ -288,13 +371,15 @@ class Parser:
             return 2
         if op == TokenKind.MINUS:
             return 1
+        if op == TokenKind.EQ:
+            return 3
 
     def next_is_operator(self):
         return self.token is not None and self.token.kind in self.operators
 
     def parse_operator_expr(self):
         first = self.parse_term()
-        if self.next_is_operator():   # some kind of function to detect if the next token is an operator
+        if self.next_is_operator():
             op = self.parse_operator()
             return self.parse_binop(first, op)  # parse binop needs to be given the previous value and 
                                                 # operator, the way i wrote it
@@ -340,12 +425,22 @@ class Parser:
         data = self.expect(TokenKind.IDENT).data
         return VarExpr(data)
     
+    def parse_alcall(self):
+        self.expect(TokenKind.ALC)
+        ident = self.expect(TokenKind.IDENT).data
+        return AlgebraicCalling(ident)
+    
     def parse_assign(self):
         self.expect(TokenKind.VAR)
         ident = self.expect(TokenKind.IDENT).data
         self.expect(TokenKind.ASSIGN)
         value = self.parse_expr()
         return Assign(ident, value)
+    
+    def parse_alg(self):
+        self.expect(TokenKind.ALGEBRA)
+        ident = self.expect(TokenKind.IDENT).data
+        return AlgerbraicVariable(ident)
 
     def parse_statements(self):
         left = self.parse_expr()
@@ -374,15 +469,32 @@ class Parser:
     def parse_function(self):
         self.expect(TokenKind.FUNC)
         name = self.expect(TokenKind.IDENT).data
-        code = self.parse_block()
-        return FunctionNode(name, code)
-
-    def parse_call(self):
-        name = self.expect(TokenKind.IDENT).data
         self.expect(TokenKind.LPAREN)
-        self.accept(TokenKind.IDENT)
+        params = []
+        while self.token.kind == TokenKind.IDENT:
+            params.append(self.expect(TokenKind.IDENT).data)
+            self.accept(TokenKind.COMMA)
         self.expect(TokenKind.RPAREN)
-        return Call(name)
+        code = self.parse_block()
+        return FunctionNode(name, params, code)
+
+    def parse_return(self):
+        self.expect(TokenKind.RETURN)
+        value = self.parse_operator_expr()
+        return ReturnNode(value)
+
+    def parse_call(self, name):
+        args = []
+        while self.token.kind != TokenKind.RPAREN:
+            args.append(self.parse_operator_expr())
+            self.accept(TokenKind.COMMA)
+        self.expect(TokenKind.RPAREN)
+        return Call(name, args)
+
+    def parse_run(self):
+        self.expect(TokenKind.RUN)
+        file = self.expect(TokenKind.STRING).data
+        return Run(file)
 
     def parse_string(self):
         data = self.expect(TokenKind.STRING).data
@@ -391,10 +503,11 @@ class Parser:
     def parse_term(self):
         t = self.token.kind
         if t == TokenKind.IDENT:
+            name = self.expect(TokenKind.IDENT).data
             if self.accept(TokenKind.LPAREN):
-                return self.parse_call()
+                return self.parse_call(name)
             else:
-                return self.parse_var()
+                return VarExpr(name)
         elif t == TokenKind.INT:
             return self.parse_num()
         elif t == TokenKind.STRING:
@@ -415,10 +528,20 @@ class Parser:
             return self.parse_print()
         elif t == TokenKind.VAR:
             return self.parse_assign()
+        elif t == TokenKind.ALGEBRA:
+            return self.parse_alg()
         elif t == TokenKind.OPEN:
             return self.parse_file_open()
         elif t == TokenKind.INPUT:
             return self.parse_input()
+        elif t == TokenKind.FUNC:
+            return self.parse_function()
+        elif t == TokenKind.RUN:
+            return self.parse_run()
+        elif t == TokenKind.RETURN:
+            return self.parse_return()
+        elif t == TokenKind.ALC:
+            return self.parse_alcall()
         else:
             return self.parse_operator_expr()
 
