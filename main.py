@@ -173,10 +173,6 @@ class String(AST):
     def eval(self, state):
         return self.string
 
-class ReturnResult(Exception):
-    pass
-    #Used for handling returns, since returns are technically errors to stop the process
-
 ######################################
 # RUN CLASSES
 ######################################
@@ -192,21 +188,17 @@ class Print(AST):
         else:
             return None
 
-class ReturnError:
+class EarlyReturn:
     def __init__(self, value):
         self.value = value
-    def __repr__(self):
-        return self.value
-    def eval(self, state):
-        return self.value.eval(state)
 
-class ReturnNode(ReturnResult):
+class ReturnNode(AST):
     def __init__(self, value):
         self.value = value
     def __repr__(self):
         return self.value
     def eval(self, state):
-        raise ReturnError(self.value)
+        raise EarlyReturn(self.value.eval(state))
 
 class FunctionNode(AST):
     def __init__(self, name: AST, params: List[str], body: AST):
@@ -236,7 +228,11 @@ class Call(AST):
                 for (param, arg) in zip(callable_.params, self.args):
                     state_copy.bind(param, arg.eval(state))
                     # evaluate the argument before binding it
-                return callable_.body.eval(state_copy)
+                # evaluates returns
+                try:
+                    return callable_.body.eval(state_copy)
+                except EarlyReturn():
+                    return None
             else: raise SyntaxError("FunctionCallError: Invalid number of args")            
         else: raise SyntaxError("FunctionCallError: This identifier does not belong to a function")
        
