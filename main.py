@@ -188,7 +188,7 @@ class Print(AST):
         else:
             return None
 
-class EarlyReturn:
+class EarlyReturn(Exception):
     def __init__(self, value):
         self.value = value
 
@@ -231,8 +231,8 @@ class Call(AST):
                 # evaluates returns
                 try:
                     return callable_.body.eval(state_copy)
-                except EarlyReturn():
-                    return None
+                except EarlyReturn as ER:
+                    return ER.value
             else: raise SyntaxError("FunctionCallError: Invalid number of args")            
         else: raise SyntaxError("FunctionCallError: This identifier does not belong to a function")
        
