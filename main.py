@@ -558,10 +558,6 @@ current_state = State()
 def get_current_state():
     return current_state.vals
 
-def array(*args):
-    return list(args)
-current_state.bind("array", array)
-
 current_state.bind("int", int)
 current_state.bind("float", float)
 current_state.bind("str", str)
