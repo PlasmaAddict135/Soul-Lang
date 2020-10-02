@@ -1,4 +1,4 @@
-from enum import Enum
+PlasmaAddict135from enum import Enum
 from collections import defaultdict
 from os import error
 from typing import List, Dict
@@ -574,7 +574,6 @@ current_state.bind("len", len)
 current_state.bind("print", print)
 current_state.bind("float", input)
 current_state.bind("callable", callable)
-current_state.bind("array", array)
 
 # Inputs
 while True:
