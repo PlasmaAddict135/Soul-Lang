@@ -57,9 +57,13 @@ class Lexer:
             self.idx += 1
         return Token(TokenKind.INT, int(match))
 
+    def current_char_is_valid_in_an_identifier(self):
+        current = self.src[self.idx]
+        return current.isidentifier() or current == '.'
+
     def lex_ident(self):
         match = ""
-        while self.idx < len(self.src) and self.src[self.idx].isidentifier():
+        while self.idx < len(self.src) and self.current_char_is_valid_in_an_identifier():
             match += self.src[self.idx]
             self.idx += 1
         
@@ -123,7 +127,10 @@ class State:
     def bind(self, name, val):
         self.vals[name] = val
     def lookup(self, name):
-        return self.vals[name]
+        try:
+            return self.vals[name]
+        except:
+            return eval(name)
 
 class SequenceNode(AST):
   def __init__(self, first, second):
@@ -261,10 +268,7 @@ class VarExpr(AST):
     def __repr__(self):
         return self.name
     def eval(self, state):
-        try:
-            return state.lookup(self.name)
-        except:
-            return eval(self.name)
+        return state.lookup(self.name)
 
 class Run(AST):
     def __init__(self, file: AST):
