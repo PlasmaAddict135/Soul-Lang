@@ -57,9 +57,13 @@ class Lexer:
             self.idx += 1
         return Token(TokenKind.INT, int(match))
 
+    def current_char_is_valid_in_an_identifier(self):
+        current = self.src[self.idx]
+        return current.isidentifier() or current == '.'
+
     def lex_ident(self):
         match = ""
-        while self.idx < len(self.src) and self.src[self.idx].isidentifier():
+        while self.idx < len(self.src) and self.current_char_is_valid_in_an_identifier():
             match += self.src[self.idx]
             self.idx += 1
         
@@ -123,7 +127,10 @@ class State:
     def bind(self, name, val):
         self.vals[name] = val
     def lookup(self, name):
-        return self.vals[name]
+        try:
+            return self.vals[name]
+        except:
+            return eval(name)
 
 class SequenceNode(AST):
   def __init__(self, first, second):
@@ -560,20 +567,6 @@ def get_state():
 
 def array(*args):
     return list(args)
-
-current_state.bind("int", int)
-current_state.bind("float", float)
-current_state.bind("str", str)
-current_state.bind("list", list)
-current_state.bind("tuple", tuple)
-current_state.bind("dict", dict)
-current_state.bind("open", open)
-current_state.bind("map", map)
-current_state.bind("zip", zip)
-current_state.bind("len", len)
-current_state.bind("print", print)
-current_state.bind("float", input)
-current_state.bind("callable", callable)
 
 # Inputs
 while True:
