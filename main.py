@@ -3,7 +3,7 @@ from collections import defaultdict
 from os import error
 from typing import List, Dict
 
-TokenKind = Enum('TokenKind', 'IF THEN ELSE IDENT INT OPERATOR PRINT STRING VAR ASSIGN UNKNOWN EOF ENDLN OPEN METHOD BLOCKEND EQ INPUT DIV MUL MINUS PLUS LPAREN RPAREN FUNC RUN COMMA NEQ GREAT LESS RETURN ALGEBRA ALC')
+TokenKind = Enum('TokenKind', 'IF THEN ELSE IDENT INT OPERATOR PRINT STRING VAR ASSIGN UNKNOWN EOF ENDLN OPEN METHOD BLOCKEND EQ INPUT DIV MUL MINUS PLUS LPAREN RPAREN FUNC RUN COMMA NEQ GREAT LESS RETURN ALGEBRA ALC COMMENT')
 
 class Token:    
     def __init__(self, kind: TokenKind, data):
@@ -89,6 +89,8 @@ class Lexer:
             return self.lex_num()
         elif ch == '"':
             return self.lex_string_literal()
+        elif ch == "|":
+            return self.lex_comment()
         else:
             kind = self.kws[ch]
             self.idx += 1
@@ -107,11 +109,27 @@ class Lexer:
             self.idx += 1
         
         if self.idx >= len(self.src):
-            print("missing end of string delimiter!")
+            print("Missing end of string delimiter!")
             return Token(TokenKind.UNKNOWN, literal)
         assert(self.src[self.idx] == '"')
         self.idx += 1
         return Token(TokenKind.STRING, literal)
+
+    def lex_comment(self):
+        assert(self.src[self.idx] == '|')
+        self.idx += 1
+
+        literal = ""
+        while self.idx < len(self.src) and self.src[self.idx] != '|':
+            literal += self.src[self.idx]
+            self.idx += 1
+        
+        if self.idx >= len(self.src):
+            print("Missing end of comment; |; or just | at end of file")
+            return Token(TokenKind.UNKNOWN, literal)
+        assert(self.src[self.idx] == '|')
+        self.idx += 1
+        return Token(TokenKind.COMMENT, literal)
 
 ########################################
 # DRIVER CLASSES
@@ -181,6 +199,12 @@ class String(AST):
     def eval(self, state):
         return self.string
 
+class Comment(AST):
+    def __init__(self, comment):
+        self.comment = comment
+    def eval(self, state):
+        pass
+
 ######################################
 # RUN CLASSES
 ######################################
@@ -208,6 +232,7 @@ class ReturnNode(AST):
     def eval(self, state):
         raise EarlyReturn(self.value.eval(state))
 
+# Thanks for cleaning this up a bit Jfecher
 class FunctionNode(AST):
     def __init__(self, name: AST, params: List[str], body: AST):
         self.name = name
@@ -514,6 +539,10 @@ class Parser:
         data = self.expect(TokenKind.STRING).data
         return String(data)
 
+    def parse_comment(self):
+        data = self.expect(TokenKind.COMMENT).data
+        return Comment(data)
+
     def parse_term(self):
         t = self.token.kind
         if t == TokenKind.IDENT:
@@ -526,6 +555,8 @@ class Parser:
             return self.parse_num()
         elif t == TokenKind.STRING:
             return self.parse_string()
+        elif t == TokenKind.COMMENT:
+            return self.parse_comment()
         elif t == TokenKind.LPAREN:
             return self.parse_parenthesized_expr()
         else:
