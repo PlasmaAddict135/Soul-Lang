@@ -261,7 +261,10 @@ class VarExpr(AST):
     def __repr__(self):
         return self.name
     def eval(self, state):
-        return state.lookup(self.name)
+        try:
+            return state.lookup(self.name)
+        except:
+            return eval(self.name)
 
 class Run(AST):
     def __init__(self, file: AST):
@@ -558,20 +561,7 @@ current_state = State()
 def get_current_state():
     return current_state.vals
 
-current_state.bind("int", int)
-current_state.bind("float", float)
-current_state.bind("str", str)
-current_state.bind("list", list)
-current_state.bind("tuple", tuple)
-current_state.bind("dict", dict)
-current_state.bind("open", open)
-current_state.bind("map", map)
-current_state.bind("zip", zip)
-current_state.bind("len", len)
-current_state.bind("print", print)
-current_state.bind("float", input)
-current_state.bind("callable", callable)
-current_state.bind("state_", get_current_state)
+current_state.bind("get_state", get_current_state)
 
 # Inputs
 while True:
