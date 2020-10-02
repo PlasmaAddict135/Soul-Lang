@@ -207,10 +207,27 @@ class FunctionNode(AST):
         self.params = params
         self.body = body
         self.params = params
+
     def __repr__(self):
         return f'func {self.name} ({self.params}) { {self.body} }'
+
     def eval(self, state):
-        return state.bind(self.name, self)
+        state_copy = State()
+        state_copy.vals = state.vals.copy()
+
+        def call_fn(*args): 
+            if len(args) != len(self.params):
+                raise SyntaxError("FunctionCallError: Invalid number of args")
+
+            for (param, arg) in zip(self.params, args):
+                state_copy.bind(param, arg)
+
+            try:
+                return self.body.eval(state_copy)
+            except EarlyReturn as ER:
+                return ER.value
+
+        return state.bind(self.name, call_fn)
 
 # Thanks Crunch! Very based!
 class Call(AST):
@@ -227,25 +244,8 @@ class Call(AST):
         if callable(function):
             args = map(lambda arg: arg.eval(state), self.args)
             return function(*args)
-
-        if not isinstance(function, FunctionNode):
-            function = function.eval()
-
-        if isinstance(function, FunctionNode) and len(function.params) == len(self.args):
-            # evaluate each argument and store it in the new state so
-            # the function we call can reference the parameters by name
-            for (param, arg) in zip(function.params, self.args):
-                state_copy.bind(param, arg.eval(state))
-            
-            # Then finally call the function
-            try:
-                return function.body.eval(state_copy)
-            except EarlyReturn as ER:
-                return ER.value       
-        elif not isinstance(function, FunctionNode):
-            raise SyntaxError("FunctionCallError: This identifier does not belong to a function")
         else:
-            raise SyntaxError("FunctionCallError: Invalid number of args")
+            raise SyntaxError("FunctionCallError: This identifier does not belong to a function")
        
 class InputNode(AST):
     def __init__(self, prompt: AST):
