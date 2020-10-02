@@ -46,6 +46,7 @@ class Lexer:
         self.kws['func'] = TokenKind.FUNC
         self.kws['return'] = TokenKind.RETURN
         self.kws['sio'] = TokenKind.RUN
+        self.kws['import'] = TokenKind.RUN
         self.kws['alg'] = TokenKind.ALGEBRA
         self.kws['@'] = TokenKind.ALC
 
@@ -219,22 +220,32 @@ class Call(AST):
     def __repr__(self):
         return self.name
     def eval(self, state):
-        callable_ = state.lookup(self.name)
+        function = state.lookup(self.name)
         state_copy = State()
         state_copy.vals = state.vals.copy()
-        if not isinstance(callable_, FunctionNode): callable_ = callable_.eval()
-        if isinstance(callable_, FunctionNode):
-            if len(callable_.params) == len(self.args):
-                for (param, arg) in zip(callable_.params, self.args):
-                    state_copy.bind(param, arg.eval(state))
-                    # evaluate the argument before binding it
-                # evaluates returns
-                try:
-                    return callable_.body.eval(state_copy)
-                except EarlyReturn as ER:
-                    return ER.value
-            else: raise SyntaxError("FunctionCallError: Invalid number of args")            
-        else: raise SyntaxError("FunctionCallError: This identifier does not belong to a function")
+
+        if callable(function):
+            args = map(lambda arg: arg.eval(state), self.args)
+            return function(*args)
+
+        if not isinstance(function, FunctionNode):
+            function = function.eval()
+
+        if isinstance(function, FunctionNode) and len(function.params) == len(self.args):
+            # evaluate each argument and store it in the new state so
+            # the function we call can reference the parameters by name
+            for (param, arg) in zip(function.params, self.args):
+                state_copy.bind(param, arg.eval(state))
+            
+            # Then finally call the function
+            try:
+                return function.body.eval(state_copy)
+            except EarlyReturn as ER:
+                return ER.value       
+        elif not isinstance(function, FunctionNode):
+            raise SyntaxError("FunctionCallError: This identifier does not belong to a function")
+        else:
+            raise SyntaxError("FunctionCallError: Invalid number of args")
        
 class InputNode(AST):
     def __init__(self, prompt: AST):
@@ -543,6 +554,25 @@ class Parser:
 
 # INPUTS
 current_state = State()
+
+def get_current_state():
+    return current_state.vals
+
+current_state.bind("int", int)
+current_state.bind("float", float)
+current_state.bind("str", str)
+current_state.bind("list", list)
+current_state.bind("tuple", tuple)
+current_state.bind("dict", dict)
+current_state.bind("open", open)
+current_state.bind("map", map)
+current_state.bind("zip", zip)
+current_state.bind("len", len)
+current_state.bind("print", print)
+current_state.bind("float", input)
+current_state.bind("callable", callable)
+current_state.bind("state_", get_current_state)
+
 while True:
     inpt = input('>>> ')
     print(Parser(Lexer(inpt)).parse_statements().eval(current_state))
