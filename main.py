@@ -552,9 +552,9 @@ class Parser:
         else:
             return self.parse_operator_expr()
 
-# INPUTS
 current_state = State()
 
+# Builtins
 def get_current_state():
     return current_state.vals
 
@@ -573,6 +573,7 @@ current_state.bind("float", input)
 current_state.bind("callable", callable)
 current_state.bind("state_", get_current_state)
 
+# Inputs
 while True:
     inpt = input('>>> ')
     print(Parser(Lexer(inpt)).parse_statements().eval(current_state))
