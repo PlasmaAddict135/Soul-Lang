@@ -555,8 +555,11 @@ class Parser:
 current_state = State()
 
 # Builtins
-def get_current_state():
+def get_state():
     return current_state.vals
+
+def array(*args):
+    return list(args)
 
 current_state.bind("int", int)
 current_state.bind("float", float)
@@ -571,7 +574,7 @@ current_state.bind("len", len)
 current_state.bind("print", print)
 current_state.bind("float", input)
 current_state.bind("callable", callable)
-current_state.bind("state_", get_current_state)
+current_state.bind("array", array)
 
 # Inputs
 while True:
