@@ -199,7 +199,7 @@ class String(AST):
     def eval(self, state):
         return self.string
 
-class Comment(AST):
+class Comment:
     def __init__(self, comment):
         self.comment = comment
     def eval(self, state):
@@ -232,7 +232,6 @@ class ReturnNode(AST):
     def eval(self, state):
         raise EarlyReturn(self.value.eval(state))
 
-# Thanks for cleaning this up a bit Jfecher
 class FunctionNode(AST):
     def __init__(self, name: AST, params: List[str], body: AST):
         self.name = name
@@ -259,7 +258,8 @@ class FunctionNode(AST):
             except EarlyReturn as ER:
                 return ER.value
 
-        return state.bind(self.name, call_fn)
+        state.bind(self.name, call_fn)
+        return state_copy.bind(self.name, call_fn)
 
 # Thanks Crunch! Very based!
 class Call(AST):
