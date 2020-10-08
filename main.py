@@ -251,6 +251,8 @@ class FunctionNode(AST):
                 raise SyntaxError("FunctionCallError: Invalid number of args")
 
             for (param, arg) in zip(self.params, args):
+                state_copy = State()
+                state_copy.vals = state.vals.copy()
                 state_copy.bind(param, arg)
 
             try:
@@ -259,7 +261,7 @@ class FunctionNode(AST):
                 return ER.value
 
         state.bind(self.name, call_fn)
-        return state_copy.bind(self.name, call_fn)
+        state_copy.bind(self.name, call_fn)
 
 # Thanks Crunch! Very based!
 class Call(AST):
@@ -270,8 +272,6 @@ class Call(AST):
         return self.name
     def eval(self, state):
         function = state.lookup(self.name)
-        state_copy = State()
-        state_copy.vals = state.vals.copy()
 
         if callable(function):
             args = map(lambda arg: arg.eval(state), self.args)
