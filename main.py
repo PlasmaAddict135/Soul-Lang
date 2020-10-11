@@ -3,7 +3,7 @@ from collections import defaultdict
 from os import error
 from typing import List, Dict
 
-TokenKind = Enum('TokenKind', 'IF THEN ELSE IDENT INT OPERATOR PRINT STRING VAR ASSIGN UNKNOWN EOF ENDLN OPEN METHOD BLOCKEND EQ INPUT DIV MUL MINUS PLUS LPAREN RPAREN FUNC RUN COMMA NEQ GREAT LESS RETURN ALGEBRA ALC COMMENT')
+TokenKind = Enum('TokenKind', 'IF THEN ELSE IDENT INT OPERATOR PRINT STRING VAR ASSIGN UNKNOWN EOF ENDLN OPEN METHOD BLOCKEND EQ INPUT DIV MUL MINUS PLUS LPAREN RPAREN FUNC RUN COMMA NEQ GREAT LESS RETURN ALGEBRA ALC COMMENT RETURN_TYPE IN WHILE RET BREAK')
 
 class Token:    
     def __init__(self, kind: TokenKind, data):
@@ -49,6 +49,12 @@ class Lexer:
         self.kws['import'] = TokenKind.RUN
         self.kws['alg'] = TokenKind.ALGEBRA
         self.kws['@'] = TokenKind.ALC
+        self.kws['$'] = TokenKind.RETURN_TYPE
+        self.kws[':'] = TokenKind.RETURN_TYPE
+        self.kws['in'] = TokenKind.IN
+        self.kws['while'] = TokenKind.WHILE
+        self.kws['ret'] = TokenKind.RET
+        self.kws['break'] = TokenKind.BREAK
 
     def lex_num(self):
         match = ""
@@ -224,6 +230,18 @@ class EarlyReturn(Exception):
     def __init__(self, value):
         self.value = value
 
+class EarlyBreak(Exception):
+    def __init__(self, value):
+        self.value = value
+
+class BreakNode(AST):
+    def __init__(self, value):
+        self.value = value
+    def __repr__(self):
+        return self.value
+    def eval(self, state):
+        raise EarlyBreak(self.value.eval(state))
+
 class ReturnNode(AST):
     def __init__(self, value):
         self.value = value
@@ -232,15 +250,19 @@ class ReturnNode(AST):
     def eval(self, state):
         raise EarlyReturn(self.value.eval(state))
 
+class TypeReturnNode(Exception):
+    pass
+
 class FunctionNode(AST):
-    def __init__(self, name: AST, params: List[str], body: AST):
+    def __init__(self, name: AST, params: List[str], return_type: AST, body: AST):
         self.name = name
         self.params = params
+        self.return_type = return_type
         self.body = body
         self.params = params
 
     def __repr__(self):
-        return f'func {self.name} ({self.params}) { {self.body} }'
+        return f'func {self.name} ({self.params}) ${self.return_type} { {self.body} }'
 
     def eval(self, state):
         state_copy = State()
@@ -258,7 +280,13 @@ class FunctionNode(AST):
             try:
                 return self.body.eval(state_copy)
             except EarlyReturn as ER:
-                return ER.value
+                if self.return_type != None:
+                    if type(ER.value) == self.return_type.eval(current_state):
+                        return ER.value
+                    if type(ER.value) != self.return_type.eval(current_state):
+                        raise TypeReturnNode("Function did not return type specified")
+                else:
+                    return ER.value
 
         state.bind(self.name, call_fn)
         state_copy.bind(self.name, call_fn)
@@ -306,7 +334,6 @@ class Run(AST):
         f.close()
         ast = Parser(Lexer(inpt)).parse_statements()
         return ast.eval(state)
-        
 
 # WIP
 class Open(AST):
@@ -333,6 +360,30 @@ class IfExpr(AST):
         elif self.right != None:
             return self.right.eval(state)
 
+class WhileExpr(AST):
+    def __init__(self, cond: AST, ret: AST, left: AST):
+        self.cond = cond 
+        self.left = left 
+        self.ret = ret
+    def __repr__(self):
+        return f"while {self.ret} {self.cond} { {self.left} }"
+    def eval(self, state):
+        x = []
+        if self.ret == None:
+            while self.cond.eval(state):
+                try:
+                    x.append(self.left.eval(state))
+                except EarlyBreak as EB:
+                    return EB.value
+        else:
+            while self.cond.eval(state):
+                try:
+                    x.append(self.left.eval(state))
+                except EarlyBreak as EB:
+                    return EB.value
+            return x
+
+
 class BinOp(AST):
     def __init__(self, first: AST, op, second: AST):
         self.op = op
@@ -357,11 +408,13 @@ class BinOp(AST):
             return self.first.eval(state) > self.second.eval(state)
         elif self.op == TokenKind.LESS:
             return self.first.eval(state) < self.second.eval(state)
+        elif self.op == TokenKind.IN:
+            return self.first.eval(state) in self.second.eval(state)
 # if 1 == 1 {print "ea"}
         
 class Parser:
     token = Token(TokenKind.UNKNOWN, "dummy")
-    operators = [TokenKind.PLUS, TokenKind.MINUS, TokenKind.MUL, TokenKind.DIV, TokenKind.EQ, TokenKind.NEQ, TokenKind.LESS, TokenKind.GREAT]
+    operators = [TokenKind.PLUS, TokenKind.MINUS, TokenKind.MUL, TokenKind.DIV, TokenKind.EQ, TokenKind.NEQ, TokenKind.LESS, TokenKind.GREAT, TokenKind.IN]
 
     def __init__(self, lexer: Lexer):
         self.lexer = lexer
@@ -392,6 +445,15 @@ class Parser:
         else:
             return False
 
+    def parse_while(self):
+        ret = None
+        self.expect(TokenKind.WHILE)
+        if self.accept(TokenKind.RET):
+            ret = ""
+        cond = self.parse_statements()
+        then = self.parse_block()
+        return WhileExpr(cond, ret, then)
+
     def parse_if(self):
         self.expect(TokenKind.IF)
         cond = self.parse_statements()
@@ -410,7 +472,7 @@ class Parser:
             return 2
         if op == TokenKind.MINUS:
             return 1
-        if op == TokenKind.EQ:
+        if op == TokenKind.EQ or TokenKind.NEQ or TokenKind.IN:
             return 3
 
     def next_is_operator(self):
@@ -510,17 +572,28 @@ class Parser:
         name = self.expect(TokenKind.IDENT).data
         self.expect(TokenKind.LPAREN)
         params = []
+        rt = None
         while self.token.kind == TokenKind.IDENT:
             params.append(self.expect(TokenKind.IDENT).data)
             self.accept(TokenKind.COMMA)
         self.expect(TokenKind.RPAREN)
+        if self.accept(TokenKind.RETURN_TYPE):
+            rt = self.parse_term()
         code = self.parse_block()
-        return FunctionNode(name, params, code)
+        return FunctionNode(name, params, rt, code)
+# TODO: func foo(arg) int { return arg }
+# WORKING: func foo(arg): int { return arg }
+# WORKING: func foo(arg) { return arg }
 
     def parse_return(self):
         self.expect(TokenKind.RETURN)
         value = self.parse_operator_expr()
         return ReturnNode(value)
+    
+    def parse_break(self):
+        self.expect(TokenKind.BREAK)
+        value = self.parse_operator_expr()
+        return BreakNode(value)
 
     def parse_call(self, name):
         args = []
@@ -529,7 +602,7 @@ class Parser:
             self.accept(TokenKind.COMMA)
         self.expect(TokenKind.RPAREN)
         return Call(name, args)
-
+ 
     def parse_run(self):
         self.expect(TokenKind.RUN)
         file = self.expect(TokenKind.STRING).data
@@ -569,6 +642,8 @@ class Parser:
         t = self.token.kind
         if t == TokenKind.IF:
             return self.parse_if()
+        elif t == TokenKind.WHILE:
+            return self.parse_while()
         elif t == TokenKind.PRINT:
             return self.parse_print()
         elif t == TokenKind.VAR:
@@ -585,6 +660,8 @@ class Parser:
             return self.parse_run()
         elif t == TokenKind.RETURN:
             return self.parse_return()
+        elif t == TokenKind.BREAK:
+            return self.parse_break()
         elif t == TokenKind.ALC:
             return self.parse_alcall()
         else:
