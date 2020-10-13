@@ -268,13 +268,13 @@ class FunctionNode(AST):
         state_copy = State()
         state_copy.vals = state.vals.copy()
 
-        def call_fn(*args): 
+        def call_fn(*args):
+            state_copy = State()
+            state_copy.vals = state.vals.copy()
             if len(args) != len(self.params):
                 raise SyntaxError("FunctionCallError: Invalid number of args")
 
             for (param, arg) in zip(self.params, args):
-                state_copy = State()
-                state_copy.vals = state.vals.copy()
                 state_copy.bind(param, arg)
 
             try:
@@ -334,6 +334,7 @@ class Run(AST):
         f.close()
         ast = Parser(Lexer(inpt)).parse_statements()
         return ast.eval(state)
+        
 
 # WIP
 class Open(AST):
@@ -382,7 +383,7 @@ class WhileExpr(AST):
                 except EarlyBreak as EB:
                     return EB.value
             return x
-
+# while
 
 class BinOp(AST):
     def __init__(self, first: AST, op, second: AST):
