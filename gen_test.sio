@@ -1,0 +1,10 @@
+var x = 10;
+
+var y = while ret x > 0 {
+    var x = x - 1;
+    x
+};
+
+y;
+
+| Implicit Generator in SIO |
