@@ -5,6 +5,4 @@ var y = while ret x > 0 {
     x
 };
 
-y;
-
-| Implicit Generator in SIO |
+y
