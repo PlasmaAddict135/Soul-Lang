@@ -3,7 +3,7 @@ from collections import defaultdict
 from os import error
 from typing import List, Dict
 
-TokenKind = Enum('TokenKind', 'IF THEN ELSE IDENT INT OPERATOR PRINT STRING VAR ASSIGN UNKNOWN EOF ENDLN OPEN METHOD BLOCKEND EQ INPUT DIV MUL MINUS PLUS LPAREN RPAREN FUNC RUN COMMA NEQ GREAT LESS RETURN ALGEBRA ALC COMMENT RETURN_TYPE IN WHILE RET BREAK')
+TokenKind = Enum('TokenKind', 'IF THEN ELSE IDENT INT OPERATOR PRINT STRING VAR ASSIGN UNKNOWN EOF ENDLN OPEN METHOD BLOCKEND EQ INPUT DIV MUL MINUS PLUS LPAREN RPAREN FUNC RUN COMMA NEQ GREAT LESS RETURN ALGEBRA ALC COMMENT RETURN_TYPE IN WHILE RET BREAK LAMBDA')
 
 class Token:    
     def __init__(self, kind: TokenKind, data):
@@ -55,6 +55,7 @@ class Lexer:
         self.kws['while'] = TokenKind.WHILE
         self.kws['ret'] = TokenKind.RET
         self.kws['break'] = TokenKind.BREAK
+        self.kws['lambda'] = TokenKind.LAMBDA
 
     def lex_num(self):
         match = ""
@@ -676,6 +677,24 @@ def get_state():
 
 def array(*args):
     return list(args)
+
+def append(l, x):
+    return l.append(x)
+
+def grab(l, position):
+    return l[position]
+
+def insert(l, item, position):
+    l.insert(item, position)
+
+def remove(l, item):
+    l.remove(item)
+
+def pop(l, position):
+    l.pop(position)
+
+def clear(l):
+    return l.clear()
 
 # Inputs
 while True:
