@@ -2,8 +2,9 @@ from enum import Enum
 from collections import defaultdict
 from os import error
 from typing import List, Dict
+import sys
 
-TokenKind = Enum('TokenKind', 'IF THEN ELSE IDENT INT OPERATOR PRINT STRING VAR ASSIGN UNKNOWN EOF ENDLN OPEN METHOD BLOCKEND EQ INPUT DIV MUL MINUS PLUS LPAREN RPAREN FUNC RUN COMMA NEQ GREAT LESS RETURN ALGEBRA ALC COMMENT RETURN_TYPE IN WHILE RET BREAK LAMBDA')
+TokenKind = Enum('TokenKind', 'IF THEN ELSE IDENT INT OPERATOR PRINT STRING VAR ASSIGN UNKNOWN EOF ENDLN OPEN METHOD BLOCKEND EQ INPUT DIV MUL MINUS PLUS LPAREN RPAREN FUNC RUN COMMA NEQ GREAT LESS RETURN ALGEBRA ALC COMMENT RETURN_TYPE IN WHILE RET BREAK LAMBDA GE LE')
 
 class Token:    
     def __init__(self, kind: TokenKind, data):
@@ -56,6 +57,8 @@ class Lexer:
         self.kws['ret'] = TokenKind.RET
         self.kws['break'] = TokenKind.BREAK
         self.kws['lambda'] = TokenKind.LAMBDA
+        self.kws['ge'] = TokenKind.GE
+        self.kws['le'] = TokenKind.LE
 
     def lex_num(self):
         match = ""
@@ -412,11 +415,15 @@ class BinOp(AST):
             return self.first.eval(state) < self.second.eval(state)
         elif self.op == TokenKind.IN:
             return self.first.eval(state) in self.second.eval(state)
+        elif self.op == TokenKind.GE:
+            return self.first.eval(state) >= self.second.eval(state)
+        elif self.op == TokenKind.LE:
+            return self.first.eval(state) <= self.second.eval(state)
 # if 1 == 1 {print "ea"}
         
 class Parser:
     token = Token(TokenKind.UNKNOWN, "dummy")
-    operators = [TokenKind.PLUS, TokenKind.MINUS, TokenKind.MUL, TokenKind.DIV, TokenKind.EQ, TokenKind.NEQ, TokenKind.LESS, TokenKind.GREAT, TokenKind.IN]
+    operators = [TokenKind.PLUS, TokenKind.MINUS, TokenKind.MUL, TokenKind.DIV, TokenKind.EQ, TokenKind.NEQ, TokenKind.LESS, TokenKind.GREAT, TokenKind.IN, TokenKind.LE, TokenKind.GE]
 
     def __init__(self, lexer: Lexer):
         self.lexer = lexer
@@ -474,7 +481,7 @@ class Parser:
             return 2
         if op == TokenKind.MINUS:
             return 1
-        if op == TokenKind.EQ or TokenKind.NEQ or TokenKind.IN:
+        if op == TokenKind.EQ or TokenKind.NEQ or TokenKind.IN or TokenKind.LE or TokenKind.GE:
             return 3
 
     def next_is_operator(self):
@@ -695,6 +702,18 @@ def pop(l, position):
 
 def clear(l):
     return l.clear()
+
+def sys_open():
+    return open(sys.argv[1], "r")
+
+def read(file):
+    return file.read()
+
+def close(file):
+    return file.close()
+
+def write(file, text):
+    return file.write(text)
 
 # Inputs
 while True:
