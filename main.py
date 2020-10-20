@@ -43,6 +43,7 @@ class Lexer:
         self.kws['=='] = TokenKind.EQ
         self.kws['is'] = TokenKind.EQ
         self.kws['!='] = TokenKind.NEQ
+        self.kws['not'] = TokenKind.NEQ
         self.kws['>'] = TokenKind.GREAT
         self.kws['<'] = TokenKind.LESS
         self.kws['input'] = TokenKind.INPUT
@@ -729,6 +730,12 @@ def close(file):
 
 def write(file, text):
     return file.write(text)
+
+def exit():
+    return sys.exit()
+
+def print_s(value):
+    print(value, end=" ")
 
 # Inputs
 while True:
