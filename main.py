@@ -7,12 +7,14 @@ import sys
 TokenKind = Enum('TokenKind', 'IF THEN ELSE IDENT INT OPERATOR PRINT STRING VAR ASSIGN UNKNOWN EOF ENDLN OPEN METHOD BLOCKEND EQ INPUT DIV MUL MINUS PLUS LPAREN RPAREN FUNC RUN COMMA NEQ GREAT LESS RETURN ALGEBRA ALC COMMENT RETURN_TYPE IN WHILE RET BREAK LAMBDA GE LE')
 
 class Token:    
-    def __init__(self, kind: TokenKind, data):
+    def __init__(self, row, column, kind: TokenKind, data):
         self.kind = kind 
-        self.data = data 
+        self.data = data
+        self.row = row
+        self.column = column
     
     def as_tuple(self):
-        return (self.kind, self.data)
+        return (self.row, self.column, self.kind, self.data)
 
 class Lexer:
     src = []
@@ -50,7 +52,6 @@ class Lexer:
         self.kws['import'] = TokenKind.RUN
         self.kws['alg'] = TokenKind.ALGEBRA
         self.kws['@'] = TokenKind.ALC
-        self.kws['$'] = TokenKind.RETURN_TYPE
         self.kws[':'] = TokenKind.RETURN_TYPE
         self.kws['in'] = TokenKind.IN
         self.kws['while'] = TokenKind.WHILE
@@ -59,13 +60,16 @@ class Lexer:
         self.kws['lambda'] = TokenKind.LAMBDA
         self.kws['ge'] = TokenKind.GE
         self.kws['le'] = TokenKind.LE
+        
+        self.row = 1
+        self.column = 1
 
     def lex_num(self):
         match = ""
         while self.idx < len(self.src) and self.src[self.idx].isdigit():
             match += self.src[self.idx]
-            self.idx += 1
-        return Token(TokenKind.INT, int(match))
+            self.eat()
+        return Token(self.row, self.column, TokenKind.INT, int(match))
 
     def current_char_is_valid_in_an_identifier(self):
         current = self.src[self.idx]
@@ -75,14 +79,14 @@ class Lexer:
         match = ""
         while self.idx < len(self.src) and self.current_char_is_valid_in_an_identifier():
             match += self.src[self.idx]
-            self.idx += 1
+            self.eat()
         
         kind = self.kws[match]
-        return Token(kind, match)
+        return Token(self.row, self.column, kind, match)
 
     def consume_whitespace(self):
         while self.idx < len(self.src) and self.src[self.idx].isspace():
-            self.idx += 1
+            self.eat()
     
     def __iter__(self):
         return self
@@ -103,43 +107,51 @@ class Lexer:
             return self.lex_comment()
         else:
             kind = self.kws[ch]
-            self.idx += 1
+            self.eat()
             if kind == TokenKind.IDENT:
                 kind = TokenKind.UNKNOWN
-            return Token(kind, ch)
+            return Token(self.row, self.column, kind, ch)
 
     # FOR EVALUATING STRINGS
     def lex_string_literal(self):
         assert(self.src[self.idx] == '"')
-        self.idx += 1
+        self.eat()
 
         literal = ""
         while self.idx < len(self.src) and self.src[self.idx] != '"':
             literal += self.src[self.idx]
-            self.idx += 1
+            self.eat()
         
         if self.idx >= len(self.src):
             print("Missing end of string delimiter!")
-            return Token(TokenKind.UNKNOWN, literal)
+            return Token(self.row, self.column, TokenKind.UNKNOWN, literal)
         assert(self.src[self.idx] == '"')
-        self.idx += 1
-        return Token(TokenKind.STRING, literal)
+        self.eat()
+        return Token(self.row, self.column, TokenKind.STRING, literal)
 
     def lex_comment(self):
         assert(self.src[self.idx] == '|')
-        self.idx += 1
+        self.eat()
 
         literal = ""
         while self.idx < len(self.src) and self.src[self.idx] != '|':
             literal += self.src[self.idx]
-            self.idx += 1
+            self.eat()
         
         if self.idx >= len(self.src):
             print("Missing end of comment; |; or just | at end of file")
-            return Token(TokenKind.UNKNOWN, literal)
+            return Token(self.row, self.column, TokenKind.UNKNOWN, literal)
         assert(self.src[self.idx] == '|')
+        self.eat()
+        return Token(self.row, self.column, TokenKind.COMMENT, literal)
+
+    def eat(self):
+        if self.src[self.idx] == "\n":
+            self.row += 1
+            self.column = 1
+        else:
+            self.column += 1
         self.idx += 1
-        return Token(TokenKind.COMMENT, literal)
 
 ########################################
 # DRIVER CLASSES
@@ -164,9 +176,9 @@ class SequenceNode(AST):
   def __init__(self, first, second):
     self.first = first
     self.second = second
-  def eval(self, state):
-    self.first.eval(state)
-    return self.second.eval(state)
+  def eval(self, state, subject):
+    self.first.eval(state, subject)
+    return self.second.eval(state, subject)
 
 class Assign(AST):
     def __init__(self, var: AST, assignment: AST):
@@ -174,15 +186,15 @@ class Assign(AST):
         self.assignment = assignment
     def __repr__(self):
         return self.var
-    def eval(self, state):
-        state.bind(self.var, self.assignment.eval(state))
+    def eval(self, state, subject):
+        state.bind(self.var, self.assignment.eval(state, subject))
 
 class AlgerbraicVariable(AST):
     def __init__(self, var: AST):
         self.var = var
     def __repr__(self):
         return self.var
-    def eval(self, state):
+    def eval(self, state, subject):
         state.bind(self.var, None)
 
 class AlgebraicCalling(AST):
@@ -190,7 +202,7 @@ class AlgebraicCalling(AST):
         self.name = name
     def __repr__(self):
         return self.name
-    def eval(self, state):
+    def eval(self, state, subject):
         state.lookup(self.name)
 
 class NumExpr(AST):
@@ -198,7 +210,7 @@ class NumExpr(AST):
         self.val = val
     def __repr__(self):
         return str(self.val)
-    def eval(self, state):
+    def eval(self, state, subject):
         return self.val
 
 class String(AST):
@@ -206,13 +218,13 @@ class String(AST):
         self.string = string
     def __repr__(self):
         return self.string
-    def eval(self, state):
+    def eval(self, state, subject):
         return self.string
 
 class Comment:
     def __init__(self, comment):
         self.comment = comment
-    def eval(self, state):
+    def eval(self, state, subject):
         pass
 
 ######################################
@@ -224,9 +236,9 @@ class Print(AST):
         self.data = data
     def __repr__(self):
         return f"print {self.data}"
-    def eval(self, state):
-        if self.data.eval(state) is not None:
-            print(self.data.eval(state))
+    def eval(self, state, subject):
+        if self.data.eval(state, subject) is not None:
+            print(self.data.eval(state, subject))
         else:
             return None
 
@@ -243,16 +255,16 @@ class BreakNode(AST):
         self.value = value
     def __repr__(self):
         return self.value
-    def eval(self, state):
-        raise EarlyBreak(self.value.eval(state))
+    def eval(self, state, subject):
+        raise EarlyBreak(self.value.eval(state, subject))
 
 class ReturnNode(AST):
     def __init__(self, value):
         self.value = value
     def __repr__(self):
         return self.value
-    def eval(self, state):
-        raise EarlyReturn(self.value.eval(state))
+    def eval(self, state, subject):
+        raise EarlyReturn(self.value.eval(state, subject))
 
 class TypeReturnNode(Exception):
     pass
@@ -268,7 +280,7 @@ class FunctionNode(AST):
     def __repr__(self):
         return f'func {self.name} ({self.params}) ${self.return_type} { {self.body} }'
 
-    def eval(self, state):
+    def eval(self, state, subject):
         state_copy = State()
         state_copy.vals = state.vals.copy()
 
@@ -276,7 +288,7 @@ class FunctionNode(AST):
             state_copy = State()
             state_copy.vals = state.vals.copy()
             if len(args) != len(self.params):
-                raise SyntaxError("FunctionCallError: Invalid number of args")
+                raise SyntaxError(f"FunctionCallError: Invalid number of args. Row: {subject.row}, Column: {subject.column}")
 
             for (param, arg) in zip(self.params, args):
                 state_copy.bind(param, arg)
@@ -288,7 +300,7 @@ class FunctionNode(AST):
                     if type(ER.value) == self.return_type.eval(current_state):
                         return ER.value
                     if type(ER.value) != self.return_type.eval(current_state):
-                        raise TypeReturnNode("Function did not return type specified")
+                        raise TypeReturnNode(f"Function did not return type specified. Row: {subject.row}, Column: {subject.column}")
                 else:
                     return ER.value
 
@@ -302,29 +314,29 @@ class Call(AST):
         self.args = args
     def __repr__(self):
         return self.name
-    def eval(self, state):
+    def eval(self, state, subject):
         function = state.lookup(self.name)
 
         if callable(function):
-            args = map(lambda arg: arg.eval(state), self.args)
+            args = map(lambda arg: arg.eval(state, subject), self.args)
             return function(*args)
         else:
-            raise SyntaxError("FunctionCallError: This identifier does not belong to a function")
+            raise SyntaxError(f"FunctionCallError: This identifier does not belong to a function. Row: {subject.row}, Column: {subject.column}")
        
 class InputNode(AST):
     def __init__(self, prompt: AST):
         self.prompt = prompt
     def __repr__(self):
         return f'input {self.prompt}'
-    def eval(self, state):
-        return input(self.prompt.eval(state))
+    def eval(self, state, subject):
+        return input(self.prompt.eval(state, subject))
 
 class VarExpr(AST):
     def __init__(self, name: str):
         self.name = name 
     def __repr__(self):
         return self.name
-    def eval(self, state):
+    def eval(self, state, subject):
         return state.lookup(self.name)
 
 class Run(AST):
@@ -332,12 +344,12 @@ class Run(AST):
         self.file = file
     def __repr__(self):
         return self.file
-    def eval(self, state):
+    def eval(self, state, subject):
         f = open(self.file+'.sio', 'r')
         inpt = f.read()
         f.close()
         ast = Parser(Lexer(inpt)).parse_statements()
-        return ast.eval(state)
+        return ast.eval(state, subject)
         
 
 # WIP
@@ -345,9 +357,9 @@ class Open(AST):
     def __init__(self, file: AST, method: AST):
         self.file = file
         self.method = method
-    def eval(self, state):
+    def eval(self, state, subject):
         if self.method == 'r':
-            return open(self.file.eval(state), 'r').read()
+            return open(self.file.eval(state, subject), 'r').read()
 
 class SyntaxError(Exception):
     pass
@@ -359,11 +371,11 @@ class IfExpr(AST):
         self.right = right
     def __repr__(self):
         return "if {} { {} } else { {} }".format(self.cond, self.left, self.right)
-    def eval(self, state):
-        if self.cond.eval(state):
-            return self.left.eval(state)
+    def eval(self, state, subject):
+        if self.cond.eval(state, subject):
+            return self.left.eval(state, subject)
         elif self.right != None:
-            return self.right.eval(state)
+            return self.right.eval(state, subject)
 
 class WhileExpr(AST):
     def __init__(self, cond: AST, ret: AST, left: AST):
@@ -372,18 +384,18 @@ class WhileExpr(AST):
         self.ret = ret
     def __repr__(self):
         return f"while {self.ret} {self.cond} { {self.left} }"
-    def eval(self, state):
+    def eval(self, state, subject):
         x = []
         if self.ret == None:
-            while self.cond.eval(state):
+            while self.cond.eval(state, subject):
                 try:
-                    x.append(self.left.eval(state))
+                    x.append(self.left.eval(state, subject))
                 except EarlyBreak as EB:
                     return EB.value
         else:
-            while self.cond.eval(state):
+            while self.cond.eval(state, subject):
                 try:
-                    x.append(self.left.eval(state))
+                    x.append(self.left.eval(state, subject))
                 except EarlyBreak as EB:
                     return EB.value
             return x
@@ -396,33 +408,33 @@ class BinOp(AST):
         self.second = second
     def __repr__(self):
         return "{} {} {}".format(self.first, self.op,self.second)
-    def eval(self, state):
+    def eval(self, state, subject):
         if self.op == TokenKind.PLUS:
-            return self.first.eval(state) + self.second.eval(state)
+            return self.first.eval(state, subject) + self.second.eval(state, subject)
         elif self.op == TokenKind.MINUS:
-            return self.first.eval(state) - self.second.eval(state)
+            return self.first.eval(state, subject) - self.second.eval(state, subject)
         elif self.op == TokenKind.MUL:
-            return self.first.eval(state) * self.second.eval(state)
+            return self.first.eval(state, subject) * self.second.eval(state, subject)
         elif self.op == TokenKind.DIV:
-            return self.first.eval(state) / self.second.eval(state)
+            return self.first.eval(state, subject) / self.second.eval(state, subject)
         elif self.op == TokenKind.EQ:
-            return self.first.eval(state) == self.second.eval(state)
+            return self.first.eval(state, subject) == self.second.eval(state, subject)
         elif self.op == TokenKind.NEQ:
-            return self.first.eval(state) != self.second.eval(state)
+            return self.first.eval(state, subject) != self.second.eval(state, subject)
         elif self.op == TokenKind.GREAT:
-            return self.first.eval(state) > self.second.eval(state)
+            return self.first.eval(state, subject) > self.second.eval(state, subject)
         elif self.op == TokenKind.LESS:
-            return self.first.eval(state) < self.second.eval(state)
+            return self.first.eval(state, subject) < self.second.eval(state, subject)
         elif self.op == TokenKind.IN:
-            return self.first.eval(state) in self.second.eval(state)
+            return self.first.eval(state, subject) in self.second.eval(state, subject)
         elif self.op == TokenKind.GE:
-            return self.first.eval(state) >= self.second.eval(state)
+            return self.first.eval(state, subject) >= self.second.eval(state, subject)
         elif self.op == TokenKind.LE:
-            return self.first.eval(state) <= self.second.eval(state)
+            return self.first.eval(state, subject) <= self.second.eval(state, subject)
 # if 1 == 1 {print "ea"}
         
 class Parser:
-    token = Token(TokenKind.UNKNOWN, "dummy")
+    token = Token(1, 1, TokenKind.UNKNOWN, "dummy")
     operators = [TokenKind.PLUS, TokenKind.MINUS, TokenKind.MUL, TokenKind.DIV, TokenKind.EQ, TokenKind.NEQ, TokenKind.LESS, TokenKind.GREAT, TokenKind.IN, TokenKind.LE, TokenKind.GE]
 
     def __init__(self, lexer: Lexer):
@@ -445,7 +457,7 @@ class Parser:
     def expect(self, kind: TokenKind):
         if self.token.kind == kind:
             return self.consume()
-        raise SyntaxError("Expected token kind {}, found {}".format(kind, self.token.kind))
+        raise SyntaxError(f"Expected token kind {kind}, found {self.token.kind}. Row: {self.lexer.row}, Column: {self.lexer.column}")
 
     def accept(self, kind: TokenKind):
         if self.token is not None and self.token.kind == kind:
@@ -642,12 +654,12 @@ class Parser:
         elif t == TokenKind.LPAREN:
             return self.parse_parenthesized_expr()
         else:
-            raise SyntaxError("Unexpected token {}".format(t))
+            raise SyntaxError(f"Unexpected token {t}. Row: {self.lexer.row}, Column: {self.lexer.column}")
 
     # TO EXECUTE EACH AST NODE WITH ITS CASE    
     def parse_expr(self):
         if self.token is None:
-            raise SyntaxError("Unexpected EOF")
+            raise SyntaxError(f"Unexpected EOF. Row: {self.lexer.row}, Column: {self.lexer.column}")
         t = self.token.kind
         if t == TokenKind.IF:
             return self.parse_if()
@@ -692,13 +704,16 @@ def grab(l, position):
     return l[position]
 
 def insert(l, item, position):
-    l.insert(item, position)
+    return l.insert(item, position)
 
 def remove(l, item):
-    l.remove(item)
+    return l.remove(item)
 
 def pop(l, position):
-    l.pop(position)
+    return l.pop(position)
+
+def update(l, position, new_value):
+    l[position] = new_value
 
 def clear(l):
     return l.clear()
@@ -718,4 +733,4 @@ def write(file, text):
 # Inputs
 while True:
     inpt = input('>>> ')
-    print(Parser(Lexer(inpt)).parse_statements().eval(current_state))
+    print(Parser(Lexer(inpt)).parse_statements().eval(current_state, Lexer(inpt)))
