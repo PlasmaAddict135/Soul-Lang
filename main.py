@@ -4,7 +4,7 @@ from os import error
 from typing import List, Dict
 import sys
 
-TokenKind = Enum('TokenKind', 'IF THEN ELSE IDENT INT OPERATOR PRINT STRING VAR ASSIGN UNKNOWN EOF ENDLN OPEN METHOD BLOCKEND EQ INPUT DIV MUL MINUS PLUS LPAREN RPAREN FUNC RUN COMMA NEQ GREAT LESS RETURN ALGEBRA ALC COMMENT RETURN_TYPE IN WHILE RET BREAK LAMBDA GE LE')
+TokenKind = Enum('TokenKind', 'IF THEN ELSE IDENT INT OPERATOR PRINT STRING VAR ASSIGN UNKNOWN EOF ENDLN OPEN METHOD BLOCKEND EQ INPUT DIV MUL MINUS PLUS LPAREN RPAREN FUNC RUN COMMA NEQ GREAT LESS RETURN ALGEBRA ALC COMMENT RETURN_TYPE IN WHILE RET BREAK LAMBDA GE LE ASSERT OR AND TRY EXCEPT')
 
 class Token:    
     def __init__(self, row, column, kind: TokenKind, data):
@@ -61,6 +61,11 @@ class Lexer:
         self.kws['lambda'] = TokenKind.LAMBDA
         self.kws['ge'] = TokenKind.GE
         self.kws['le'] = TokenKind.LE
+        self.kws['or'] = TokenKind.OR
+        self.kws['and'] = TokenKind.AND
+        self.kws['assert'] = TokenKind.ASSERT
+        self.kws['try'] = TokenKind.TRY
+        self.kws['except'] = TokenKind.EXCEPT
         
         self.row = 1
         self.column = 1
@@ -378,6 +383,26 @@ class IfExpr(AST):
         elif self.right != None:
             return self.right.eval(state, subject)
 
+class AssertNode(AST):
+    def __init__(self, value):
+        self.value = value
+    def __repr__(self):
+        return f"assert {self.value}"
+    def eval(self, state, subject):
+        assert self.value.eval(state, subject)
+
+class TryExceptNode(AST):
+    def __init__(self, left, right):
+        self.left = left
+        self.right = right
+    def __repr__(self):
+        return f"try { {self.left} } except { {self.right} }"
+    def eval(self, state, subject):
+        try:
+            return self.left.eval(state, subject)
+        except:
+            return self.right.eval(state, subject)
+
 class WhileExpr(AST):
     def __init__(self, cond: AST, ret: AST, left: AST):
         self.cond = cond 
@@ -432,11 +457,15 @@ class BinOp(AST):
             return self.first.eval(state, subject) >= self.second.eval(state, subject)
         elif self.op == TokenKind.LE:
             return self.first.eval(state, subject) <= self.second.eval(state, subject)
+        elif self.op == TokenKind.OR:
+            return self.first.eval(state, subject) or self.second.eval(state, subject)
+        elif self.op == TokenKind.AND:
+            return self.first.eval(state, subject) and self.second.eval(state, subject)
 # if 1 == 1 {print "ea"}
         
 class Parser:
     token = Token(1, 1, TokenKind.UNKNOWN, "dummy")
-    operators = [TokenKind.PLUS, TokenKind.MINUS, TokenKind.MUL, TokenKind.DIV, TokenKind.EQ, TokenKind.NEQ, TokenKind.LESS, TokenKind.GREAT, TokenKind.IN, TokenKind.LE, TokenKind.GE]
+    operators = [TokenKind.PLUS, TokenKind.MINUS, TokenKind.MUL, TokenKind.DIV, TokenKind.EQ, TokenKind.NEQ, TokenKind.LESS, TokenKind.GREAT, TokenKind.IN, TokenKind.LE, TokenKind.GE, TokenKind.AND, TokenKind.OR]
 
     def __init__(self, lexer: Lexer):
         self.lexer = lexer
@@ -494,7 +523,7 @@ class Parser:
             return 2
         if op == TokenKind.MINUS:
             return 1
-        if op == TokenKind.EQ or TokenKind.NEQ or TokenKind.IN or TokenKind.LE or TokenKind.GE:
+        if op == TokenKind.EQ or TokenKind.NEQ or TokenKind.IN or TokenKind.LE or TokenKind.GE or TokenKind.AND or TokenKind.OR:
             return 3
 
     def next_is_operator(self):
@@ -638,6 +667,18 @@ class Parser:
         data = self.expect(TokenKind.COMMENT).data
         return Comment(data)
 
+    def parse_assert(self):
+        self.expect(TokenKind.ASSERT)
+        value = self.parse_operator_expr()
+        return AssertNode(value)
+
+    def parse_try_except(self):
+        self.expect(TokenKind.TRY)
+        left = self.parse_block()
+        self.expect(TokenKind.EXCEPT)
+        right = self.parse_block()
+        return TryExceptNode(left, right)
+
     def parse_term(self):
         t = self.token.kind
         if t == TokenKind.IDENT:
@@ -684,6 +725,10 @@ class Parser:
             return self.parse_return()
         elif t == TokenKind.BREAK:
             return self.parse_break()
+        elif t == TokenKind.TRY:
+            return self.parse_try_except()
+        elif t == TokenKind.ASSERT:
+            return self.parse_assert()
         elif t == TokenKind.ALC:
             return self.parse_alcall()
         else:
@@ -736,6 +781,21 @@ def exit():
 
 def print_s(value):
     print(value, end=" ")
+
+def dd(value):
+    return defaultdict(lambda: value)
+
+def is_digit(value):
+    return value.isdigit()
+
+def is_alpha(value):
+    return value.isalpha()
+
+def is_ident(value):
+    return value.isidentifier()
+
+def is_space(value):
+    return value.isspace()
 
 # Inputs
 while True:
