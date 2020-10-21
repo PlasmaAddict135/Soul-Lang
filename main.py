@@ -300,12 +300,12 @@ class FunctionNode(AST):
                 state_copy.bind(param, arg)
 
             try:
-                return self.body.eval(state_copy)
+                return self.body.eval(state_copy, subject)
             except EarlyReturn as ER:
                 if self.return_type != None:
-                    if type(ER.value) == self.return_type.eval(current_state):
+                    if type(ER.value) == self.return_type.eval(current_state, subject):
                         return ER.value
-                    if type(ER.value) != self.return_type.eval(current_state):
+                    if type(ER.value) != self.return_type.eval(current_state, subject):
                         raise TypeReturnNode(f"Function did not return type specified. Row: {subject.row}, Column: {subject.column}")
                 else:
                     return ER.value
