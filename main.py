@@ -4,7 +4,7 @@ from os import error
 from typing import List, Dict
 import sys
 
-TokenKind = Enum('TokenKind', 'IF THEN ELSE IDENT INT OPERATOR PRINT STRING VAR ASSIGN UNKNOWN EOF ENDLN OPEN METHOD BLOCKEND EQ INPUT DIV MUL MINUS PLUS LPAREN RPAREN FUNC RUN COMMA NEQ GREAT LESS RETURN ALGEBRA ALC COMMENT RETURN_TYPE IN WHILE RET BREAK LAMBDA GE LE ASSERT OR AND TRY EXCEPT')
+TokenKind = Enum('TokenKind', 'IF THEN ELSE IDENT INT OPERATOR PRINT STRING VAR ASSIGN UNKNOWN EOF ENDLN OPEN METHOD BLOCKEND EQ INPUT DIV MUL MINUS PLUS LPAREN RPAREN FUNC RUN COMMA NEQ GREAT LESS RETURN ALGEBRA ALC COMMENT RETURN_TYPE IN WHILE RET BREAK LAMBDA GE LE ASSERT OR AND TRY EXCEPT RAISE TRUE FALSE NONE DOT')
 
 class Token:    
     def __init__(self, row, column, kind: TokenKind, data):
@@ -66,7 +66,12 @@ class Lexer:
         self.kws['assert'] = TokenKind.ASSERT
         self.kws['try'] = TokenKind.TRY
         self.kws['except'] = TokenKind.EXCEPT
-        
+        self.kws['raise'] = TokenKind.RAISE
+        self.kws['None'] = TokenKind.NONE
+        self.kws['True'] = TokenKind.TRUE
+        self.kws['False'] = TokenKind.FALSE
+        self.kws['.'] = TokenKind.DOT
+
         self.row = 1
         self.column = 1
 
@@ -345,6 +350,14 @@ class VarExpr(AST):
     def eval(self, state, subject):
         return state.lookup(self.name)
 
+class RaiseNode(AST):
+    def __init__(self, value):
+        self.value = value
+    def __repr__(self):
+        return f'raise {self.value}'
+    def eval(self, state, subject):
+        raise self.value.eval(state, subject)
+
 class Run(AST):
     def __init__(self, file: AST):
         self.file = file
@@ -402,6 +415,28 @@ class TryExceptNode(AST):
             return self.left.eval(state, subject)
         except:
             return self.right.eval(state, subject)
+
+class TrueNode(AST):
+    def __init__(self):
+        pass
+    def __repr__(self):
+        return "True"
+    def eval(self, state, subject):
+        return True
+class FalseNode(AST):
+    def __init__(self):
+        pass
+    def __repr__(self):
+        return "False"
+    def eval(self, state, subject):
+        return False
+class NoneNode(AST):
+    def __init__(self):
+        pass
+    def __repr__(self):
+        return "None"
+    def eval(self, state, subject):
+        return None
 
 class WhileExpr(AST):
     def __init__(self, cond: AST, ret: AST, left: AST):
@@ -461,11 +496,16 @@ class BinOp(AST):
             return self.first.eval(state, subject) or self.second.eval(state, subject)
         elif self.op == TokenKind.AND:
             return self.first.eval(state, subject) and self.second.eval(state, subject)
+        elif self.op == TokenKind.DOT:
+            if self.second.eval(state, subject).isinstance(self.first.eval(state, subject)):
+                obj = self.first.eval(state, subject)
+                atribute = self.second.eval(state, subject)
+                return obj.atribute
 # if 1 == 1 {print "ea"}
         
 class Parser:
     token = Token(1, 1, TokenKind.UNKNOWN, "dummy")
-    operators = [TokenKind.PLUS, TokenKind.MINUS, TokenKind.MUL, TokenKind.DIV, TokenKind.EQ, TokenKind.NEQ, TokenKind.LESS, TokenKind.GREAT, TokenKind.IN, TokenKind.LE, TokenKind.GE, TokenKind.AND, TokenKind.OR]
+    operators = [TokenKind.PLUS, TokenKind.MINUS, TokenKind.MUL, TokenKind.DIV, TokenKind.EQ, TokenKind.NEQ, TokenKind.LESS, TokenKind.GREAT, TokenKind.IN, TokenKind.LE, TokenKind.GE, TokenKind.AND, TokenKind.OR, TokenKind.DOT]
 
     def __init__(self, lexer: Lexer):
         self.lexer = lexer
@@ -523,7 +563,7 @@ class Parser:
             return 2
         if op == TokenKind.MINUS:
             return 1
-        if op == TokenKind.EQ or TokenKind.NEQ or TokenKind.IN or TokenKind.LE or TokenKind.GE or TokenKind.AND or TokenKind.OR:
+        if op == TokenKind.EQ or TokenKind.NEQ or TokenKind.IN or TokenKind.LE or TokenKind.GE or TokenKind.AND or TokenKind.OR or TokenKind.DOT:
             return 3
 
     def next_is_operator(self):
@@ -672,12 +712,29 @@ class Parser:
         value = self.parse_operator_expr()
         return AssertNode(value)
 
+    def parse_true(self):
+        self.expect(TokenKind.TRUE)
+        return TrueNode()
+    
+    def parse_false(self):
+        self.expect(TokenKind.FALSE)
+        return FalseNode()
+    
+    def parse_none(self):
+        self.expect(TokenKind.NONE)
+        return NoneNode()
+
     def parse_try_except(self):
         self.expect(TokenKind.TRY)
         left = self.parse_block()
         self.expect(TokenKind.EXCEPT)
         right = self.parse_block()
         return TryExceptNode(left, right)
+
+    def parse_raise(self):
+        self.expect(TokenKind.RAISE)
+        value = self.parse_expr()
+        return RaiseNode(value)
 
     def parse_term(self):
         t = self.token.kind
@@ -691,6 +748,12 @@ class Parser:
             return self.parse_num()
         elif t == TokenKind.STRING:
             return self.parse_string()
+        elif t == TokenKind.TRUE:
+            return self.parse_true()
+        elif t == TokenKind.FALSE:
+            return self.parse_false()
+        elif t == TokenKind.NONE:
+            return self.parse_none()
         elif t == TokenKind.COMMENT:
             return self.parse_comment()
         elif t == TokenKind.LPAREN:
@@ -727,6 +790,8 @@ class Parser:
             return self.parse_break()
         elif t == TokenKind.TRY:
             return self.parse_try_except()
+        elif t == TokenKind.RAISE:
+            return self.parse_raise()
         elif t == TokenKind.ASSERT:
             return self.parse_assert()
         elif t == TokenKind.ALC:
