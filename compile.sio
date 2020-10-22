@@ -1,4 +1,4 @@
-var TokenKind = Enum("TokenKind", "IF THEN ELSE IDENT INT OPERATOR PRINT STRING VAR ASSIGN UNKNOWN EOF ENDLN OPEN METHOD BLOCKEND EQ INPUT DIV MUL MINUS PLUS LPAREN RPAREN FUNC RUN COMMA NEQ GREAT LESS RETURN ALGEBRA ALC COMMENT RETURN_TYPE IN WHILE RET BREAK LAMBDA GE LE ASSERT")
+var TokenKind = Enum("TokenKind", "IF THEN ELSE IDENT INT OPERATOR PRINT STRING VAR ASSIGN UNKNOWN EOF ENDLN OPEN METHOD BLOCKEND EQ INPUT DIV MUL MINUS PLUS LPAREN RPAREN FUNC RUN COMMA NEQ GREAT LESS RETURN ALGEBRA ALC COMMENT RETURN_TYPE IN WHILE RET BREAK LAMBDA GE LE ASSERT OR AND NONE RAISE");
 
 func Token(row_, column_, kind, data) {
     func as_tuple() {
@@ -13,6 +13,7 @@ func Lexer(src) {
     var column = 1;
 
     | Implement dd as a builtin |;
+    | Implement is digit ect |;
     var kws = dd(TokenKind.IDENT);
     update(kws, "print", TokenKind.PRINT);
     update(kws, "var", TokenKind.VAR);
@@ -37,7 +38,7 @@ func Lexer(src) {
     update(kws, "input", TokenKind.INPUT);
     update(kws, "import", TokenKind.RUN);
     update(kws, "sio", TokenKind.RUN);
-    update(kws, ":", TokenKind.RETURN_TYPE);
+    update(kws, " {", TokenKind.RETURN_TYPE);
     update(kws, "in", TokenKind.IN);
     update(kws, "while", TokenKind.WHILE);
     update(kws, "ret", TokenKind.RET);
@@ -45,7 +46,10 @@ func Lexer(src) {
     update(kws, "print", TokenKind.PRINT);
     update(kws, "ge", TokenKind.GE);
     update(kws, "le", TokenKind.LE);
-    update(kws, "assert", TokenKind,ASSERT);
+    update(kws, "or", TokenKind.OR);
+    update(kws, "and", TokenKind.AND);
+    update(kws, "None", TokenKind.NONE);
+    update(kws, "raise", TokenKind.RAISE);
 
     func lex_num() {
         var match = "";
@@ -60,7 +64,7 @@ func Lexer(src) {
 
     func current_char_is_valid_in_an_identifier() {
             var current = grab(src, idx);
-            return is_identifier(current) or current is "."
+            return is_ident(current) or current is "."
     };
 
     func lex_ident() {
@@ -84,70 +88,68 @@ func Lexer(src) {
         }
     };
 
-    func __next__() {
-        if idx ge len(src) {
-            exit()
-        };
-        consume_whitespace();
-        var ch = grab(src, idx);
-        if is_alpha(ch) {
-            return lex_ident()
+    if idx ge len(src) {
+        StopIteration
+    };
+    consume_whitespace();
+    var ch = grab(src, idx);
+    if is_alpha(ch) {
+        return lex_ident()
+    }
+    else {
+        if is_digit(ch) {
+            return lex_num()
         }
         else {
-            if isdigit(ch) {
-                return lex_num()
+            | Make it so that this accepts ' as a valid char |;
+            if ch is "[" {
+                return lex_string_literal()
             }
             else {
-                | Make it so that this accepts ' as a valid char |;
-                if ch is '"' {
-                    return lex_string_literal()
+                if ch is "|" {
+                    return lex_comment()
                 }
                 else {
-                    if ch is "|" {
-                        return lex_comment()
-                    }
-                    else {
-                        eat();
-                        if grab(kws, ch) is TokenKind.IDENT {
-                            update(kws, ch, TokenKind.UNKNOWN)
-                        };
-                        var kind_ = grab(kws, ch);
-                        return Token(row, column, kind_, ch)
-                    }
+                    eat();
+                    if grab(kws, ch) is TokenKind.IDENT {
+                        update(kws, ch, TokenKind.UNKNOWN)
+                    };
+                    var kind_ = grab(kws, ch);
+                    return Token(row, column, kind_, ch)
                 }
             }
         }
     };
 
     func lex_string_literal() {
-        assert {grab(src, idx) is '"'};
+        assert grab(src, idx) is "[";
         eat();
-    
+
         var literal = "";
         while idx < len(src) {
-            while grab(src, idx) not '"' {
+            while grab(src, idx) not "[" {
                 var literal = grab(src, idx);
                 eat()
             }
         };
-            
+
         if idx ge len(src) {
             print "Missing end of string delimiter!";
             return Token(row, column, TokenKind.UNKNOWN, literal)
         };
 
-        assert {grab(src, idx) is '"'};
+        assert grab(src, idx) is "[";
         eat();
         return Token(row, column, TokenKind.STRING, literal)
     };
 
     func lex_comment() {
-        assert {grab(src, idx) is '|'};
+        assert grab(src, idx) is "|";
         eat();
 
         var comment = "";
         while idx < len(src) {
-            while grab(src, idx) not '|' {
+            while grab(src, idx) not "|" {
                 var comment = grab(src, idx);
                 eat()
             }
@@ -158,7 +160,7 @@ func Lexer(src) {
             return Token(row, column, TokenKind.UNKNOWN, comment)
         };
 
-        assert {grab(src, idx) is '|'};
+        assert grab(src, idx) is "|";
         eat();
         return Token(row, column, TokenKind.STRING, comment)
     };
@@ -175,14 +177,390 @@ func Lexer(src) {
     }
 };
 
-|
-TODO:
-1. AST Nodes
-2. Parser
-3. Shitter
-4. Binary
-|;
 
-func Parser() {
-    return 0
-}
+func State() {
+    var vals = dict();
+
+    func bind(name, val) {
+        update(vals, name, val)
+    };
+
+    func lookup(name) {
+        try {
+            return grab(vals, name)
+        }
+        except {
+            return eval(name)
+        }
+    }
+};
+
+class Parser(lexer) {
+    var token = Token(1, 1, TokenKind.UNKNOWN, "dummy");
+    var operators = array(TokenKind.PLUS, TokenKind.MINUS, TokenKind.MUL, TokenKind.DIV, TokenKind.EQ, TokenKind.NEQ, TokenKind.LESS, TokenKind.GREAT, TokenKind.IN, TokenKind.LE, TokenKind.GE, TokenKind.AND, TokenKind.OR);
+
+    var token = next(lexer);
+    
+    func consume() {
+        try {
+            var next_token = next(lexer)
+        }
+        except {
+            var next_token = None
+        };
+        
+        if token {
+            var rtt = token;
+            var token = next_token;
+            return rtt
+        };
+        return None
+    };
+
+    func expect(kind) {
+        if token.kind is kind {
+            return consume()
+        };
+        raise SyntaxError("Expected token kind"+kind+", found: "+token.kind+". Row: "+lexer.row+", Column: "+lexer.column)
+    };
+
+    func accept(kind) {
+        if token is not None and  token.kind is kind {
+            consume();
+            return True
+        }
+        else {
+            return False
+        }
+    };
+
+    func parse_while() {
+        var rtt = None;
+        expect(TokenKind.WHILE);
+        if accept(TokenKind.RET) {
+            var rtt = ""
+        };
+        var cond = parse_statements();
+        var then = parse_block();
+        return WhileExpr(cond, rtt, then)
+    };
+
+    func parse_if() {
+        expect(TokenKind.IF);
+        var cond = parse_statements();
+        var then = parse_block();
+        var els = None;
+        if accept(TokenKind.ELSE) {
+            var els = parse_block()
+        };
+        return IfExpr(cond, then, els)
+    };
+
+    func prece(op) {
+        if op is TokenKind.PLUS {
+            return 1
+        };
+        if op is TokenKind.MUL {
+            return 2
+        };
+        if op is TokenKind.DIV {
+            return 2
+        };
+        if op is TokenKind.MINUS {
+            return 1
+        };
+        if op is TokenKind.EQ or TokenKind.NEQ or TokenKind.IN or TokenKind.LE or TokenKind.GE or TokenKind.AND or TokenKind.OR {
+            return 3
+        }
+    };
+
+    func next_is_operator() {
+        return token not None and token.kind in operators
+    };
+
+    func parse_operator_expr() {
+        var first = parse_term();
+        if next_is_operator() {
+            var op = parse_operator();
+            return parse_binop(first, op)
+        }
+        else {
+            return first
+        }
+    };
+
+    func expect_any(kinds) {
+        if token.kind in kinds {
+            return consume()
+        }
+    };
+
+    func parse_operator() {
+        return expect_any(operators).kind
+    };
+
+    func parse_binop(first, op) {
+        var second = parse_term();
+        if next_is_operator() {
+            var next_ = parse_operator();
+            if prece(op) ge prece(next_) {
+                return parse_binop(BinOp(first, op, second), next_)
+            }
+            else {
+                return BinOp(first, op,  parse_binop(second, next_))
+            }
+        }
+        else {
+            return BinOp(first, op, second)
+        }
+    };
+
+    func parse_file_open() {
+        expect(TokenKind.OPEN).data;
+        var file = parse_string();
+        var method = expect(TokenKind.METHOD);
+        return Open(file, method)
+    };
+
+    func parse_num() {
+        var data = expect(TokenKind.INT).data;
+        return NumExpr(data)
+    };
+
+    func parse_input() {
+        expect(TokenKind.INPUT);
+        var prompt = parse_expr();
+        return InputNode(prompt)
+    };
+
+    func parse_var() {
+        var data = expect(TokenKind.IDENT).data;
+        return VarExpr(data)
+    };
+    
+    func parse_alcall() {
+        expect(TokenKind.ALC);
+        var ident = expect(TokenKind.IDENT).data;
+        return AlgebraicCalling(ident)
+    };
+    
+    func parse_assign() {
+        expect(TokenKind.VAR);
+        var ident = expect(TokenKind.IDENT).data;
+        expect(TokenKind.ASSIGN);
+        var value = parse_expr();
+        return Assign(ident, value)
+    };
+    
+    func parse_alg() {
+        expect(TokenKind.ALGEBRA);
+        var ident = expect(TokenKind.IDENT).data;
+        return AlgerbraicVariable(ident)
+    };
+
+    func parse_statements() {
+        var left = parse_expr();
+        while accept(TokenKind.ENDLN) {
+            var right = parse_expr();
+            var left = SequenceNode(left, right)
+        };
+        return left
+    }
+
+    func parse_block() {
+        expect(TokenKind.THEN).data;
+        var a = parse_statements();
+        expect(TokenKind.BLOCKEND).data;
+        return a
+    };
+
+    func parse_parenthesized_expr() {
+        expect(TokenKind.LPAREN);
+        var data = parse_operator_expr();
+        expect(TokenKind.RPAREN);
+        return data
+    };
+
+    func parse_print() {
+        expect(TokenKind.PRINT);
+        var d = parse_expr();
+        return Print(d)
+    };
+
+    func parse_function() {
+        expect(TokenKind.FUNC);
+        var name = expect(TokenKind.IDENT).data;
+        expect(TokenKind.LPAREN);
+        var params = array();
+        var rt = None;
+        while token.kind is TokenKind.IDENT {
+            append(params, expect(TokenKind.IDENT).data);
+            accept(TokenKind.COMMA);
+            expect(TokenKind.RPAREN)
+        };
+        if accept(TokenKind.RETURN_TYPE) {
+            var rt = parse_term()
+        };
+        var code = parse_block();
+        return FunctionNode(name, params, rt, code)
+    };
+
+    func parse_return() {
+        expect(TokenKind.RETURN);
+        var value = parse_operator_expr();
+        return rtturnNode(value)
+    };
+    
+    func parse_break() {
+        expect(TokenKind.BREAK);
+        var value = parse_operator_expr();
+        return BreakNode(value)
+    };
+
+    func parse_call(name) {
+        var args = array();
+        while token.kind not TokenKind.RPAREN {
+            append(args, parse_operator_expr());
+            accept(TokenKind.COMMA);
+            expect(TokenKind.RPAREN)
+        };
+        return Call(name, args)
+    };
+ 
+    func parse_run() {
+        expect(TokenKind.RUN);
+        var file = expect(TokenKind.STRING).data;
+        return Run(file)
+    };
+
+    func parse_string() {
+        var data = expect(TokenKind.STRING).data;
+        return String(data)
+    };
+
+    func parse_comment() {
+        var data = expect(TokenKind.COMMENT).data;
+        return Comment(data)
+    };
+
+    func parse_true() {
+        expect(TokenKind.TRUE);
+        return TrueNode()
+    };
+    
+    func parse_false() {
+        expect(TokenKind.FALSE);
+        return FalseNode()
+    };
+    
+    func parse_none() {
+        expect(TokenKind.NONE);
+        return NoneNode()
+    };
+
+    func parse_assert() {
+        expect(TokenKind.ASSERT);
+        var value = parse_operator_expr();
+        return AssertNode(value)
+    };
+
+    func parse_try_except() {
+        expect(TokenKind.TRY);
+        var left = parse_block();
+        expect(TokenKind.EXCEPT);
+        var right = parse_block();
+        return TryExceptNode(left, right)
+    };
+
+    func parse_term() {
+        var t = token.kind;
+        if t is TokenKind.IDENT {
+            var name = expect(TokenKind.IDENT).data;
+            if accept(TokenKind.LPAREN) {
+                return parse_call(name)
+            }
+            else {
+                return VarExpr(name)
+            }
+        };
+        if t is TokenKind.INT {
+            return parse_num()
+        };
+        if t is TokenKind.STRING {
+            return parse_string()
+        };
+        if t is TokenKind.COMMENT {
+            return parse_comment()
+        };
+        if t is TokenKind.TRUE {
+            return parse_true()
+        };
+        if t is TokenKind.FALSE {
+            return parse_false()
+        };
+        if t is TokenKind.NONE {
+            return parse_none()
+        };
+        if t is TokenKind.LPAREN {
+            return parse_parenthesized_expr()
+        }
+        else {
+            raise SyntaxError(f"Unexpected token"+t+". Row: "+lexer.row+", Column: "+lexer.column)
+        }
+    };
+ 
+    func parse_expr() {
+        if token is None {
+            raise SyntaxError(f"Unexpected EOF. Row { { lexer.row}, Column { { lexer.column}")
+        };
+        var t = token.kind;
+        if t is TokenKind.IF {
+            return parse_if()
+        };
+        if t is TokenKind.WHILE {
+            return parse_while()
+        };
+        if t is TokenKind.PRINT {
+            return parse_print()
+        };
+        if t is TokenKind.VAR {
+            return parse_assign()
+        };
+        if t is TokenKind.ALGEBRA {
+            return parse_alg()
+        };
+        if t is TokenKind.OPEN {
+            return parse_file_open()
+        };
+        if t is TokenKind.INPUT {
+            return parse_input()
+        };
+        if t is TokenKind.FUNC {
+            return parse_function()
+        };
+        if t is TokenKind.RUN {
+            return parse_run()
+        };
+        if t is TokenKind.RETURN {
+            return parse_return()
+        };
+        if t is TokenKind.BREAK {
+            return parse_break()
+        };
+        if t is TokenKind.TRY {
+            return parse_try_except()
+        };
+        if t is TokenKind.ASSERT {
+            return parse_assert()
+        };
+        if t is TokenKind.ALC {
+            return parse_alcall()
+        else {
+            return parse_operator_expr()
+        }
+    }
+};
+
+var inpt = input "COMPILER >>> ";
+
+print Lexer(inpt)
