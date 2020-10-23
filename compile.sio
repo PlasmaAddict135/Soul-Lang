@@ -1,4 +1,4 @@
-var TokenKind = Enum("TokenKind", "IF THEN ELSE IDENT INT OPERATOR PRINT STRING VAR ASSIGN UNKNOWN EOF ENDLN OPEN METHOD BLOCKEND EQ INPUT DIV MUL MINUS PLUS LPAREN RPAREN FUNC RUN COMMA NEQ GREAT LESS RETURN ALGEBRA ALC COMMENT RETURN_TYPE IN WHILE RET BREAK LAMBDA GE LE ASSERT OR AND NONE RAISE");
+var TokenKind = Enum("TokenKind", "IF THEN ELSE IDENT INT OPERATOR PRINT STRING VAR ASSIGN UNKNOWN EOF ENDLN METHOD BLOCKEND EQ INPUT DIV MUL MINUS PLUS LPAREN RPAREN FUNC RUN COMMA NEQ GREAT LESS RETURN ALGEBRA ALC COMMENT RETURN_TYPE IN WHILE RET BREAK LAMBDA GE LE ASSERT OR AND NONE RAISE TRUE FALSE NONE");
 
 func Token(row_, column_, kind, data) {
     func as_tuple() {
@@ -12,8 +12,6 @@ func Lexer(src) {
     var row = 1;
     var column = 1;
 
-    | Implement dd as a builtin |;
-    | Implement is digit ect |;
     var kws = dd(TokenKind.IDENT);
     update(kws, "print", TokenKind.PRINT);
     update(kws, "var", TokenKind.VAR);
@@ -89,6 +87,7 @@ func Lexer(src) {
     };
 
     if idx ge len(src) {
+        | TODO: IMPLEMENT StopIteration |;
         StopIteration
     };
     consume_whitespace();
@@ -178,22 +177,249 @@ func Lexer(src) {
 };
 
 
-func State() {
+func State(name, val) {
     var vals = dict();
-
-    func bind(name, val) {
-        update(vals, name, val)
-    };
-
-    func lookup(name) {
-        try {
-            return grab(vals, name)
-        }
-        except {
-            return eval(name)
-        }
-    }
+    array(
+        func bind() {
+            update(vals, name, val)
+        },
+        func lookup() {
+            try {
+                return grab(vals, name)
+            }
+            except {
+                return grab(name, 3)
+            }
+        },
+        bind(),
+        lookup()
+    )
 };
+
+func PrintNode(value) {
+    array(
+        func compile() {
+            return "print('"+grab(value, 2)+"')"
+        },
+        func eval() {
+            print grab(value, 3)
+        },
+        compile(),
+        eval()
+    )
+};
+
+func NumExpr(value) {
+    array(
+        func compile() {
+            return value
+        },
+        func eval() {
+            return value
+        },
+        compile(),
+        eval()
+    )
+}
+
+func String(string) {
+    array(
+        func compile() {
+            return "'"+string+"'"
+        },
+        func eval() {
+            return string
+        },
+        compile(),
+        eval()
+    )
+};
+
+func Assign(variable, assignment) {
+    array(
+        func compile() {
+            return variable+" = "+grab(assignment, 2)
+        },
+        func eval() {
+            var state_bind = State(variable, grab(assignment, 3));
+            grab(state_bind, 2)
+        },
+        compile(),
+        eval()
+    )
+};
+
+func EarlyReturn(value) {
+    value;
+    return None
+};
+
+func EarlyBreak(value) {
+    value;
+    return None
+};
+
+func BreakNode(value) {
+    array(
+        func compile {
+            return "break "+grab(value, 2)
+        },
+        func eval {
+            return EarlyBreak(grab(value, 3))
+        },
+        compile(),
+        eval()
+    )
+};
+
+func ReturnNode(value) {
+    array(
+        func compile {
+            return "return "+grab(value, 2)
+        },
+        func eval {
+            return EarlyReturn(grab(value, 3))
+        },
+        compile(),
+        eval()
+    )
+};
+
+func InputNode(value) {
+    array(
+        func compile {
+            return "input("+grab(value, 2)+")"
+        },
+        func eval {
+            return input(grab(value, 3))
+        },
+        compile(),
+        eval()
+    )
+};
+
+func VarExpr(value) {
+    array(
+        func compile {
+            return "input("+grab(value, 2)+")"
+        },
+        func eval {
+            var state_look = State(value, None);
+            return grab(state_look, 3)
+        },
+        compile(),
+        eval()
+    )
+};
+
+func RaiseNode(value) {
+    array(
+        func compile {
+            return "raise "+grab(value, 2)
+        },
+        func eval {
+            raise grab(value, 3))
+        },
+        compile(),
+        eval()
+    )
+};
+
+func IfExpr(cond, left, right) {
+    array(
+        func compile {
+            if right not None {
+                return "if "+grab(cond, 2)+": "+grab(left, 2)+" else: "+grab(right, 2)
+            }
+            else {
+                return "if "+grab(cond, 2)+": "+grab(left, 2)
+            }
+        },
+        func eval {
+            if grab(cond, 3) {
+                return grab(left, 3)
+            }
+            else {
+                if right not None {
+                    return grab(right, 3)
+                }
+            }
+        },
+        compile(),
+        eval()
+    )
+};
+
+func AssertNode(value) {
+    array(
+        func compile {
+            return "assert "+grab(value, 2)
+        },
+        func eval {
+            assert grab(value, 3)
+        },
+        compile(),
+        eval()
+    )
+};
+
+func TryExceptNode(left, right) {
+    array(
+        func compile {
+            return "try: "+grab(left, 2)+" except: "+grab(right, 2)
+        },
+        func eval {
+            try grab(cond, 3) {
+                return grab(left, 3)
+            }
+            except {
+                return grab(right, 3)
+            }
+        },
+        compile(),
+        eval()
+    )
+};
+
+func TrueNode() {
+    array(
+        func compile {
+            return "True"
+        },
+        func eval {
+            return True
+        },
+        compile(),
+        eval()
+    )
+};
+
+func FalseNode() {
+    array(
+        func compile {
+            return "False"
+        },
+        func eval {
+            return False
+        },
+        compile(),
+        eval()
+    )
+};
+
+func NoneNode() {
+    array(
+        func compile {
+            return "None"
+        },
+        func eval {
+            return False
+        },
+        compile(),
+        eval()
+    )
+};
+
 
 class Parser(lexer) {
     var token = Token(1, 1, TokenKind.UNKNOWN, "dummy");
@@ -315,13 +541,6 @@ class Parser(lexer) {
         }
     };
 
-    func parse_file_open() {
-        expect(TokenKind.OPEN).data;
-        var file = parse_string();
-        var method = expect(TokenKind.METHOD);
-        return Open(file, method)
-    };
-
     func parse_num() {
         var data = expect(TokenKind.INT).data;
         return NumExpr(data)
@@ -410,7 +629,13 @@ class Parser(lexer) {
         var value = parse_operator_expr();
         return rtturnNode(value)
     };
-    
+
+    func parse_raise() {
+        expect(TokenKind.RAISE);
+        var value = self.parse_expr();
+        return RaiseNode(value)
+    };
+
     func parse_break() {
         expect(TokenKind.BREAK);
         var value = parse_operator_expr();
@@ -420,7 +645,7 @@ class Parser(lexer) {
     func parse_call(name) {
         var args = array();
         while token.kind not TokenKind.RPAREN {
-            append(args, parse_operator_expr());
+            append(args, parse_expr());
             accept(TokenKind.COMMA);
             expect(TokenKind.RPAREN)
         };
@@ -529,9 +754,6 @@ class Parser(lexer) {
         if t is TokenKind.ALGEBRA {
             return parse_alg()
         };
-        if t is TokenKind.OPEN {
-            return parse_file_open()
-        };
         if t is TokenKind.INPUT {
             return parse_input()
         };
@@ -550,6 +772,8 @@ class Parser(lexer) {
         if t is TokenKind.TRY {
             return parse_try_except()
         };
+        if t is TokenKind.RAISE:
+            return self.parse_raise()
         if t is TokenKind.ASSERT {
             return parse_assert()
         };
