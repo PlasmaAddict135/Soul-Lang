@@ -4,7 +4,7 @@ from os import error
 from typing import List, Dict
 import sys
 
-TokenKind = Enum('TokenKind', 'IF THEN ELSE IDENT INT OPERATOR PRINT STRING VAR ASSIGN UNKNOWN EOF ENDLN OPEN METHOD BLOCKEND EQ INPUT DIV MUL MINUS PLUS LPAREN RPAREN FUNC RUN COMMA NEQ GREAT LESS RETURN ALGEBRA ALC COMMENT RETURN_TYPE IN WHILE RET BREAK LAMBDA GE LE ASSERT OR AND TRY EXCEPT RAISE TRUE FALSE NONE DOT')
+TokenKind = Enum('TokenKind', 'IF THEN ELSE IDENT INT OPERATOR PRINT STRING VAR ASSIGN UNKNOWN EOF ENDLN METHOD BLOCKEND EQ INPUT DIV MUL MINUS PLUS LPAREN RPAREN FUNC RUN COMMA NEQ GREAT LESS RETURN ALGEBRA ALC COMMENT RETURN_TYPE IN WHILE RET BREAK LAMBDA GE LE ASSERT OR AND TRY EXCEPT RAISE TRUE FALSE NONE DOT')
 
 class Token:    
     def __init__(self, row, column, kind: TokenKind, data):
@@ -36,8 +36,6 @@ class Lexer:
         self.kws['print'] = TokenKind.PRINT
         self.kws['var'] = TokenKind.VAR
         self.kws['='] = TokenKind.ASSIGN
-        self.kws['open'] = TokenKind.OPEN
-        self.kws['r'] = TokenKind.METHOD
         self.kws[';'] = TokenKind.ENDLN
         self.kws[','] = TokenKind.COMMA
         self.kws['=='] = TokenKind.EQ
@@ -369,16 +367,6 @@ class Run(AST):
         f.close()
         ast = Parser(Lexer(inpt)).parse_statements()
         return ast.eval(state, subject)
-        
-
-# WIP
-class Open(AST):
-    def __init__(self, file: AST, method: AST):
-        self.file = file
-        self.method = method
-    def eval(self, state, subject):
-        if self.method == 'r':
-            return open(self.file.eval(state, subject), 'r').read()
 
 class SyntaxError(Exception):
     pass
@@ -496,11 +484,6 @@ class BinOp(AST):
             return self.first.eval(state, subject) or self.second.eval(state, subject)
         elif self.op == TokenKind.AND:
             return self.first.eval(state, subject) and self.second.eval(state, subject)
-        elif self.op == TokenKind.DOT:
-            if self.second.eval(state, subject).isinstance(self.first.eval(state, subject)):
-                obj = self.first.eval(state, subject)
-                atribute = self.second.eval(state, subject)
-                return obj.atribute
 # if 1 == 1 {print "ea"}
         
 class Parser:
@@ -598,12 +581,6 @@ class Parser:
         else:
             return BinOp(first, op, second)
 
-    def parse_file_open(self):
-        self.expect(TokenKind.OPEN).data
-        file = self.parse_string()
-        method = self.expect(TokenKind.METHOD)
-        return Open(file, method)
-
     def parse_num(self):
         data = self.expect(TokenKind.INT).data
         return NumExpr(data)
@@ -689,7 +666,8 @@ class Parser:
     def parse_call(self, name):
         args = []
         while self.token.kind != TokenKind.RPAREN:
-            args.append(self.parse_operator_expr())
+            # CHECK TO SEE IF THIS CAUSES AN ERROR, IF IT DOES CHANGE BACK TO parse_operator_expr()
+            args.append(self.parse_expr())
             self.accept(TokenKind.COMMA)
         self.expect(TokenKind.RPAREN)
         return Call(name, args)
@@ -776,8 +754,6 @@ class Parser:
             return self.parse_assign()
         elif t == TokenKind.ALGEBRA:
             return self.parse_alg()
-        elif t == TokenKind.OPEN:
-            return self.parse_file_open()
         elif t == TokenKind.INPUT:
             return self.parse_input()
         elif t == TokenKind.FUNC:
