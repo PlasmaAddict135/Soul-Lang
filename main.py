@@ -1,10 +1,68 @@
 from enum import Enum
 from collections import defaultdict
 from os import error
-from typing import List, Dict
+from typing import List
 import sys
 
-TokenKind = Enum('TokenKind', 'IF THEN ELSE IDENT INT OPERATOR PRINT STRING VAR ASSIGN UNKNOWN EOF ENDLN METHOD BLOCKEND EQ INPUT DIV MUL MINUS PLUS LPAREN RPAREN FUNC RUN COMMA NEQ GREAT LESS RETURN ALGEBRA ALC COMMENT RETURN_TYPE IN WHILE RET BREAK LAMBDA GE LE ASSERT OR AND TRY EXCEPT RAISE TRUE FALSE NONE DOT')
+TokenKind = Enum(
+    'TokenKind',
+    '''
+    IF
+    THEN
+    ELSE
+    IDENT
+    INT
+    OPERATOR
+    PRINT
+    STRING
+    VAR
+    ASSIGN
+    UNKNOWN
+    EOF
+    ENDLN
+    METHOD
+    BLOCKEND
+    EQ
+    INPUT
+    DIV
+    MUL
+    MINUS
+    PLUS
+    LPAREN
+    RPAREN
+    FUNC
+    RUN
+    COMMA
+    NEQ
+    GREAT
+    LESS
+    RETURN
+    ALGEBRA
+    ALC
+    COMMENT
+    RETURN_TYPE
+    IN
+    WHILE
+    RET
+    BREAK
+    LAMBDA
+    GE
+    LE
+    ASSERT
+    OR
+    AND
+    TRY
+    EXCEPT
+    RAISE
+    TRUE
+    FALSE
+    NONE
+    LBRACK
+    RBRACK
+    FAM
+    INIT
+    '''
+)
 
 class Token:    
     def __init__(self, row, column, kind: TokenKind, data):
@@ -68,7 +126,10 @@ class Lexer:
         self.kws['None'] = TokenKind.NONE
         self.kws['True'] = TokenKind.TRUE
         self.kws['False'] = TokenKind.FALSE
-        self.kws['.'] = TokenKind.DOT
+        self.kws['['] = TokenKind.LBRACK
+        self.kws[']'] = TokenKind.RBRACK
+        self.kws['~'] = TokenKind.FAM
+        self.kws['init'] = TokenKind.INIT
 
         self.row = 1
         self.column = 1
@@ -82,7 +143,7 @@ class Lexer:
 
     def current_char_is_valid_in_an_identifier(self):
         current = self.src[self.idx]
-        return current.isidentifier() or current == '.'
+        return current.isidentifier()
 
     def lex_ident(self):
         match = ""
@@ -180,14 +241,16 @@ class State:
             return self.vals[name]
         except:
             return eval(name)
+    def unbind(self, name):
+        return self.vals.pop(name)
 
 class SequenceNode(AST):
-  def __init__(self, first, second):
-    self.first = first
-    self.second = second
-  def eval(self, state, subject):
-    self.first.eval(state, subject)
-    return self.second.eval(state, subject)
+    def __init__(self, first, second):
+        self.first = first
+        self.second = second
+    def eval(self, state, subject):
+        self.first.eval(state, subject)
+        return self.second.eval(state, subject)
 
 class Assign(AST):
     def __init__(self, var: AST, assignment: AST):
@@ -377,7 +440,7 @@ class IfExpr(AST):
         self.left = left 
         self.right = right
     def __repr__(self):
-        return "if {} { {} } else { {} }".format(self.cond, self.left, self.right)
+        return f"if {self.cond} { {self.left} } else { {self.right} }"
     def eval(self, state, subject):
         if self.cond.eval(state, subject):
             return self.left.eval(state, subject)
@@ -426,6 +489,18 @@ class NoneNode(AST):
     def eval(self, state, subject):
         return None
 
+class InitNode(AST):
+    def __init__(self, value):
+        self.value = value
+    def __repr__(self):
+        return f"init { {self.value} }"
+    def eval(self, state, subject):
+        state.bind("self", self.value.eval(state, subject))
+        try:
+            state.lookup("self")()
+        except:
+            state.lookup("self")
+
 class WhileExpr(AST):
     def __init__(self, cond: AST, ret: AST, left: AST):
         self.cond = cond 
@@ -456,7 +531,7 @@ class BinOp(AST):
         self.first = first
         self.second = second
     def __repr__(self):
-        return "{} {} {}".format(self.first, self.op,self.second)
+        return f"{self.first} {self.op} {self.second}"
     def eval(self, state, subject):
         if self.op == TokenKind.PLUS:
             return self.first.eval(state, subject) + self.second.eval(state, subject)
@@ -484,16 +559,18 @@ class BinOp(AST):
             return self.first.eval(state, subject) or self.second.eval(state, subject)
         elif self.op == TokenKind.AND:
             return self.first.eval(state, subject) and self.second.eval(state, subject)
+        elif self.op == TokenKind.FAM:
+            return self.first.eval(state, subject)[self.second.eval(state, subject)]()
 # if 1 == 1 {print "ea"}
         
 class Parser:
     token = Token(1, 1, TokenKind.UNKNOWN, "dummy")
-    operators = [TokenKind.PLUS, TokenKind.MINUS, TokenKind.MUL, TokenKind.DIV, TokenKind.EQ, TokenKind.NEQ, TokenKind.LESS, TokenKind.GREAT, TokenKind.IN, TokenKind.LE, TokenKind.GE, TokenKind.AND, TokenKind.OR, TokenKind.DOT]
+    operators = [TokenKind.PLUS, TokenKind.MINUS, TokenKind.MUL, TokenKind.DIV, TokenKind.EQ, TokenKind.NEQ, TokenKind.LESS, TokenKind.GREAT, TokenKind.IN, TokenKind.LE, TokenKind.GE, TokenKind.AND, TokenKind.OR, TokenKind.FAM]
 
     def __init__(self, lexer: Lexer):
         self.lexer = lexer
         self.token = next(self.lexer)
-    
+
     def consume(self):
         try:
             next_token = next(self.lexer)
@@ -546,7 +623,7 @@ class Parser:
             return 2
         if op == TokenKind.MINUS:
             return 1
-        if op == TokenKind.EQ or TokenKind.NEQ or TokenKind.IN or TokenKind.LE or TokenKind.GE or TokenKind.AND or TokenKind.OR or TokenKind.DOT:
+        if op == TokenKind.EQ or TokenKind.NEQ or TokenKind.IN or TokenKind.LE or TokenKind.GE or TokenKind.AND or TokenKind.OR or TokenKind.FAM:
             return 3
 
     def next_is_operator(self):
@@ -714,6 +791,14 @@ class Parser:
         value = self.parse_expr()
         return RaiseNode(value)
 
+    def parse_init(self):
+        self.expect(TokenKind.INIT)
+        if self.accept(TokenKind.RETURN_TYPE):
+            v = self.parse_expr()
+        else:
+            v = self.parse_block()
+        return InitNode(v)
+
     def parse_term(self):
         t = self.token.kind
         if t == TokenKind.IDENT:
@@ -770,6 +855,8 @@ class Parser:
             return self.parse_raise()
         elif t == TokenKind.ASSERT:
             return self.parse_assert()
+        elif t == TokenKind.INIT:
+            return self.parse_init()
         elif t == TokenKind.ALC:
             return self.parse_alcall()
         else:
@@ -821,7 +908,8 @@ def exit():
     return sys.exit()
 
 def print_s(value):
-    print(value, end=" ")
+    print(value, end="")
+    return value
 
 def dd(value):
     return defaultdict(lambda: value)
@@ -837,6 +925,16 @@ def is_ident(value):
 
 def is_space(value):
     return value.isspace()
+
+def sep_enum(name, value):
+    x = Enum(name, value)
+    return current_state.bind(f"{name}.{value}", str(helper(*x)))
+
+def helper(*args):
+    return args
+
+def dict_(key, value):
+    return {key: value}
 
 # Inputs
 while True:
