@@ -1,7 +1,7 @@
 from enum import Enum
 from collections import defaultdict
 from os import error
-from typing import List
+from typing import Dict, List
 import sys
 
 TokenKind = Enum(
@@ -40,7 +40,7 @@ TokenKind = Enum(
     ALGEBRA
     ALC
     COMMENT
-    RETURN_TYPE
+    COLON
     IN
     WHILE
     RET
@@ -59,7 +59,7 @@ TokenKind = Enum(
     NONE
     LBRACK
     RBRACK
-    FAM
+    DOT
     INIT
     '''
 )
@@ -109,7 +109,7 @@ class Lexer:
         self.kws['import'] = TokenKind.RUN
         self.kws['alg'] = TokenKind.ALGEBRA
         self.kws['@'] = TokenKind.ALC
-        self.kws[':'] = TokenKind.RETURN_TYPE
+        self.kws[':'] = TokenKind.COLON
         self.kws['in'] = TokenKind.IN
         self.kws['while'] = TokenKind.WHILE
         self.kws['ret'] = TokenKind.RET
@@ -128,7 +128,7 @@ class Lexer:
         self.kws['False'] = TokenKind.FALSE
         self.kws['['] = TokenKind.LBRACK
         self.kws[']'] = TokenKind.RBRACK
-        self.kws['~'] = TokenKind.FAM
+        self.kws['.'] = TokenKind.DOT
         self.kws['init'] = TokenKind.INIT
 
         self.row = 1
@@ -387,7 +387,10 @@ class Call(AST):
     def __repr__(self):
         return self.name
     def eval(self, state, subject):
-        function = state.lookup(self.name)
+        try:
+            function = state.lookup(self.name)
+        except:
+            function = self.name.eval(state, subject)
 
         if callable(function):
             args = map(lambda arg: arg.eval(state, subject), self.args)
@@ -456,16 +459,23 @@ class AssertNode(AST):
         assert self.value.eval(state, subject)
 
 class TryExceptNode(AST):
-    def __init__(self, left, right):
+    def __init__(self, left, specified, right):
         self.left = left
         self.right = right
+        self.specified = specified
     def __repr__(self):
-        return f"try { {self.left} } except { {self.right} }"
+        return f"try { {self.left} } except {self.specified} { {self.right} }"
     def eval(self, state, subject):
-        try:
-            return self.left.eval(state, subject)
-        except:
-            return self.right.eval(state, subject)
+        if self.specified == None:
+            try:
+                return self.left.eval(state, subject)
+            except:
+                return self.right.eval(state, subject)
+        else:
+            try:
+                return self.left.eval(state, subject)
+            except self.specified:
+                return self.right.eval(state, subject)
 
 class TrueNode(AST):
     def __init__(self):
@@ -559,13 +569,17 @@ class BinOp(AST):
             return self.first.eval(state, subject) or self.second.eval(state, subject)
         elif self.op == TokenKind.AND:
             return self.first.eval(state, subject) and self.second.eval(state, subject)
-        elif self.op == TokenKind.FAM:
-            return self.first.eval(state, subject)[self.second.eval(state, subject)]()
+        elif self.op == TokenKind.DOT:
+            try:
+                # NOTE: Enums are accessed by doing: (x being an enum with atribute Y) x."Y"
+                return getattr(self.first.eval(state, subject), self.second.eval(state, subject))
+            except:
+                return self.first.eval(state, subject)[self.second.eval(state, subject)]
 # if 1 == 1 {print "ea"}
         
 class Parser:
     token = Token(1, 1, TokenKind.UNKNOWN, "dummy")
-    operators = [TokenKind.PLUS, TokenKind.MINUS, TokenKind.MUL, TokenKind.DIV, TokenKind.EQ, TokenKind.NEQ, TokenKind.LESS, TokenKind.GREAT, TokenKind.IN, TokenKind.LE, TokenKind.GE, TokenKind.AND, TokenKind.OR, TokenKind.FAM]
+    operators = [TokenKind.PLUS, TokenKind.MINUS, TokenKind.MUL, TokenKind.DIV, TokenKind.EQ, TokenKind.NEQ, TokenKind.LESS, TokenKind.GREAT, TokenKind.IN, TokenKind.LE, TokenKind.GE, TokenKind.AND, TokenKind.OR, TokenKind.DOT]
 
     def __init__(self, lexer: Lexer):
         self.lexer = lexer
@@ -611,7 +625,10 @@ class Parser:
         then = self.parse_block()
         els = None
         if self.accept(TokenKind.ELSE):
-            els = self.parse_block()
+            try:
+                els = self.parse_block()
+            except:
+                els = self.parse_expr()
         return IfExpr(cond, then, els)
 
     def prece(self, op: TokenKind):
@@ -623,8 +640,10 @@ class Parser:
             return 2
         if op == TokenKind.MINUS:
             return 1
-        if op == TokenKind.EQ or TokenKind.NEQ or TokenKind.IN or TokenKind.LE or TokenKind.GE or TokenKind.AND or TokenKind.OR or TokenKind.FAM:
+        if op == TokenKind.EQ or TokenKind.NEQ or TokenKind.IN or TokenKind.LE or TokenKind.GE or TokenKind.AND or TokenKind.OR:
             return 3
+        if op == TokenKind.DOT:
+            return 4
 
     def next_is_operator(self):
         return self.token is not None and self.token.kind in self.operators
@@ -650,13 +669,22 @@ class Parser:
         if self.next_is_operator():
             next_ = self.parse_operator()
             if self.prece(op) >= self.prece(next_):
-                return self.parse_binop(BinOp(first, op, second), next_)  # Binop(first, op, second) becomes the 
+                if self.accept(TokenKind.LPAREN):
+                    return self.parse_call(self.parse_binop(BinOp(first, op, second), next_))
+                else:
+                    return self.parse_binop(BinOp(first, op, second), next_)  # Binop(first, op, second) becomes the 
                                                                     # first for the recursive call
             else:  # prece(next) > prece(op)
-                return BinOp(first, op, self.parse_binop(second, next_))  # recurse to the right, and make the 
+                if self.accept(TokenKind.LPAREN):
+                    return self.parse_call(BinOp(first, op, self.parse_binop(second, next_)))
+                else:
+                    return BinOp(first, op, self.parse_binop(second, next_))  # recurse to the right, and make the 
                                                                     # resulting expr the second for this call
         else:
-            return BinOp(first, op, second)
+            if self.accept(TokenKind.LPAREN):
+                return self.parse_call(BinOp(first, op, second))
+            else:
+                return BinOp(first, op, second)
 
     def parse_num(self):
         data = self.expect(TokenKind.INT).data
@@ -722,12 +750,13 @@ class Parser:
             params.append(self.expect(TokenKind.IDENT).data)
             self.accept(TokenKind.COMMA)
         self.expect(TokenKind.RPAREN)
-        if self.accept(TokenKind.RETURN_TYPE):
+        try:
             rt = self.parse_term()
+        except:
+            rt = None
         code = self.parse_block()
         return FunctionNode(name, params, rt, code)
-# TODO: func foo(arg) int { return arg }
-# WORKING: func foo(arg): int { return arg }
+# WORKING: func foo(arg) int { return arg }
 # WORKING: func foo(arg) { return arg }
 
     def parse_return(self):
@@ -781,10 +810,15 @@ class Parser:
 
     def parse_try_except(self):
         self.expect(TokenKind.TRY)
+        s = None
         left = self.parse_block()
         self.expect(TokenKind.EXCEPT)
-        right = self.parse_block()
-        return TryExceptNode(left, right)
+        try:
+            right = self.parse_block()
+        except:
+            s = self.expect(TokenKind.IDENT)
+            right = self.parse_block()
+        return TryExceptNode(left, s, right)
 
     def parse_raise(self):
         self.expect(TokenKind.RAISE)
@@ -793,7 +827,7 @@ class Parser:
 
     def parse_init(self):
         self.expect(TokenKind.INIT)
-        if self.accept(TokenKind.RETURN_TYPE):
+        if self.accept(TokenKind.COLON):
             v = self.parse_expr()
         else:
             v = self.parse_block()
@@ -868,6 +902,10 @@ current_state = State()
 def get_state():
     return current_state.vals
 
+def delete(variable):
+    current_state.unbind(variable)
+    return None
+
 def array(*args):
     return list(args)
 
@@ -885,6 +923,9 @@ def remove(l, item):
 
 def pop(l, position):
     return l.pop(position)
+
+def split(l, val):
+    return l.split(val)
 
 def update(l, position, new_value):
     l[position] = new_value
@@ -908,8 +949,7 @@ def exit():
     return sys.exit()
 
 def print_s(value):
-    print(value, end="")
-    return value
+    print(value, end=" ")
 
 def dd(value):
     return defaultdict(lambda: value)
@@ -938,5 +978,12 @@ def dict_(key, value):
 
 # Inputs
 while True:
-    inpt = input('>>> ')
-    print(Parser(Lexer(inpt)).parse_statements().eval(current_state, Lexer(inpt)))
+    try:
+        f = open(sys.argv[1]+".sio", 'r')
+        inpt = f.read()
+        f.close()
+        print(Parser(Lexer(inpt)).parse_statements().eval(current_state, Lexer(inpt)))
+        break
+    except:
+        inpt = input('>>> ')
+        print(Parser(Lexer(inpt)).parse_statements().eval(current_state, Lexer(inpt)))
