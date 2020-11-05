@@ -154,7 +154,6 @@ func Lexer(src) {
             }
         };
         if state is STRING {
-            print "state is string";
             print ch;
             if ch is '"' {
                 var state = NORMAL;
@@ -164,7 +163,6 @@ func Lexer(src) {
         };
         if state is DIGIT {
             if is_digit(ch) is False {
-                print "is digit, case one";
                 var state = NORMAL;
                 var accumulator = int(accumulator);
                 callback(Token(row, column, TokenKind."INT", accumulator));
@@ -178,7 +176,6 @@ func Lexer(src) {
             }
         };
         if state is IDENTIFIER {
-            print "is identifier";
             if is_alpha(ch) or '_' or is_digit(ch) {
                 append(accumulator, ch)
             }
