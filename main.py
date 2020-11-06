@@ -3,6 +3,7 @@ from collections import defaultdict
 from os import error
 from typing import Dict, List
 import sys
+import time
 
 TokenKind = Enum(
     'TokenKind',
@@ -61,6 +62,11 @@ TokenKind = Enum(
     RBRACK
     DOT
     INIT
+    NEWLINE
+    MATCH
+    WITH
+    NEXT
+    COMP
     '''
 )
 
@@ -130,6 +136,11 @@ class Lexer:
         self.kws[']'] = TokenKind.RBRACK
         self.kws['.'] = TokenKind.DOT
         self.kws['init'] = TokenKind.INIT
+        self.kws['nl'] = TokenKind.NEWLINE
+        self.kws['match'] = TokenKind.MATCH
+        self.kws['with'] = TokenKind.WITH
+        self.kws['next'] = TokenKind.NEXT
+        self.kws['c'] = TokenKind.COMP
 
         self.row = 1
         self.column = 1
@@ -157,7 +168,7 @@ class Lexer:
     def consume_whitespace(self):
         while self.idx < len(self.src) and self.src[self.idx].isspace():
             self.eat()
-    
+
     def __iter__(self):
         return self
 
@@ -173,6 +184,8 @@ class Lexer:
             return self.lex_num()
         elif ch == '"':
             return self.lex_string_literal()
+        elif ch == "'":
+            return self.lex_single_quote_literal()
         elif ch == "|":
             return self.lex_comment()
         else:
@@ -196,6 +209,22 @@ class Lexer:
             print("Missing end of string delimiter!")
             return Token(self.row, self.column, TokenKind.UNKNOWN, literal)
         assert(self.src[self.idx] == '"')
+        self.eat()
+        return Token(self.row, self.column, TokenKind.STRING, literal)
+    
+    def lex_single_quote_literal(self):
+        assert(self.src[self.idx] == "'")
+        self.eat()
+
+        literal = ""
+        while self.idx < len(self.src) and self.src[self.idx] != "'":
+            literal += self.src[self.idx]
+            self.eat()
+        
+        if self.idx >= len(self.src):
+            print("Missing end of string delimiter!")
+            return Token(self.row, self.column, TokenKind.UNKNOWN, literal)
+        assert(self.src[self.idx] == "'")
         self.eat()
         return Token(self.row, self.column, TokenKind.STRING, literal)
 
@@ -251,6 +280,8 @@ class SequenceNode(AST):
     def eval(self, state, subject):
         self.first.eval(state, subject)
         return self.second.eval(state, subject)
+    def compile(self):
+        return self.first.compile()+"\n"+self.first.compile()
 
 class Assign(AST):
     def __init__(self, var: AST, assignment: AST):
@@ -260,6 +291,8 @@ class Assign(AST):
         return self.var
     def eval(self, state, subject):
         state.bind(self.var, self.assignment.eval(state, subject))
+    def compile(self):
+        return "var "+self.var.compile()+" = "+self.assignment.compile()
 
 class AlgerbraicVariable(AST):
     def __init__(self, var: AST):
@@ -268,6 +301,8 @@ class AlgerbraicVariable(AST):
         return self.var
     def eval(self, state, subject):
         state.bind(self.var, None)
+    def compile(self):
+        pass
 
 class AlgebraicCalling(AST):
     def __init__(self, name):
@@ -276,6 +311,8 @@ class AlgebraicCalling(AST):
         return self.name
     def eval(self, state, subject):
         state.lookup(self.name)
+    def compile(self):
+        pass
 
 class NumExpr(AST):
     def __init__(self, val: int):
@@ -284,6 +321,8 @@ class NumExpr(AST):
         return str(self.val)
     def eval(self, state, subject):
         return self.val
+    def compile(self):
+        return str(self.val)
 
 class String(AST):
     def __init__(self, string: str):
@@ -292,11 +331,15 @@ class String(AST):
         return self.string
     def eval(self, state, subject):
         return self.string
+    def compile(self):
+        return '"'+self.string+'"'
 
 class Comment:
     def __init__(self, comment):
         self.comment = comment
     def eval(self, state, subject):
+        pass
+    def compile(self):
         pass
 
 ######################################
@@ -313,6 +356,9 @@ class Print(AST):
             print(self.data.eval(state, subject))
         else:
             return None
+    def compile(self):
+        print(self.data.compile())
+        return "echo "+self.data.compile()
 
 class EarlyReturn(Exception):
     def __init__(self, value):
@@ -329,6 +375,8 @@ class BreakNode(AST):
         return self.value
     def eval(self, state, subject):
         raise EarlyBreak(self.value.eval(state, subject))
+    def compile(self):
+        return "break"
 
 class ReturnNode(AST):
     def __init__(self, value):
@@ -337,6 +385,8 @@ class ReturnNode(AST):
         return self.value
     def eval(self, state, subject):
         raise EarlyReturn(self.value.eval(state, subject))
+    def compile(self):
+        return "return "+self.value.compile()
 
 class TypeReturnNode(Exception):
     pass
@@ -378,6 +428,8 @@ class FunctionNode(AST):
 
         state.bind(self.name, call_fn)
         state_copy.bind(self.name, call_fn)
+    def compile(self):
+        return "method "+self.name+"("+str(self.params)[1:-1].strip("'")+"): "+self.return_type.compile()+" =\n\t"+self.body.compile()
 
 # Thanks Crunch! Very based!
 class Call(AST):
@@ -397,6 +449,8 @@ class Call(AST):
             return function(*args)
         else:
             raise SyntaxError(f"FunctionCallError: This identifier does not belong to a function. Row: {subject.row}, Column: {subject.column}")
+    def compile(self):
+        return self.name+"("+str(self.args)[1:-1].strip("'")+")"
        
 class InputNode(AST):
     def __init__(self, prompt: AST):
@@ -405,6 +459,8 @@ class InputNode(AST):
         return f'input {self.prompt}'
     def eval(self, state, subject):
         return input(self.prompt.eval(state, subject))
+    def compile(self):
+        return "readLine(stdin)"
 
 class VarExpr(AST):
     def __init__(self, name: str):
@@ -413,6 +469,8 @@ class VarExpr(AST):
         return self.name
     def eval(self, state, subject):
         return state.lookup(self.name)
+    def compile(self):
+        return self.name
 
 class RaiseNode(AST):
     def __init__(self, value):
@@ -421,18 +479,32 @@ class RaiseNode(AST):
         return f'raise {self.value}'
     def eval(self, state, subject):
         raise self.value.eval(state, subject)
+    def compile(self):
+        return f"raise {self.value}"
 
 class Run(AST):
-    def __init__(self, file: AST):
+    def __init__(self, c: AST, file: AST):
         self.file = file
+        self.c = c
     def __repr__(self):
         return self.file
     def eval(self, state, subject):
-        f = open(self.file+'.sio', 'r')
-        inpt = f.read()
-        f.close()
-        ast = Parser(Lexer(inpt)).parse_statements()
-        return ast.eval(state, subject)
+        if self.c == None:
+            f = open(self.file+'.sio', 'r')
+            inpt = f.read()
+            f.close()
+            ast = Parser(Lexer(inpt)).parse_statements()
+            return ast.eval(state, subject)
+        elif self.c != None:
+            print("ping 2")
+            f = open(self.file+'.sio', 'r')
+            inpt = f.read()
+            f.close()
+            ast = Parser(Lexer(inpt)).parse_statements()
+            out = open(self.file+".nim", 'w')
+            return out.write(ast.compile())
+    def compile(self):
+        return f"import {self.file}"
 
 class SyntaxError(Exception):
     pass
@@ -449,6 +521,11 @@ class IfExpr(AST):
             return self.left.eval(state, subject)
         elif self.right != None:
             return self.right.eval(state, subject)
+    def compile(self):
+        if self.right == None:
+            return "if "+self.cond.compile()+":\n\t"+self.left.compile()
+        elif self.right != None:
+            return "if "+self.cond.compile()+":\n\t"+self.left.compile()+" else:\n\t"+self.right.compile()
 
 class AssertNode(AST):
     def __init__(self, value):
@@ -457,6 +534,8 @@ class AssertNode(AST):
         return f"assert {self.value}"
     def eval(self, state, subject):
         assert self.value.eval(state, subject)
+    def compile(self):
+        return f"assert {self.value}"
 
 class TryExceptNode(AST):
     def __init__(self, left, specified, right):
@@ -476,6 +555,11 @@ class TryExceptNode(AST):
                 return self.left.eval(state, subject)
             except self.specified:
                 return self.right.eval(state, subject)
+    def compile(self):
+        if self.specified == None:
+            return "try:\n\t"+self.left.compile(), "except:\n\t"+self.right.compile()
+        else:
+            return "try:\n\t"+self.left.compile(), f"except {self.specified}:\n\t"+self.right.compile()
 
 class TrueNode(AST):
     def __init__(self):
@@ -484,6 +568,8 @@ class TrueNode(AST):
         return "True"
     def eval(self, state, subject):
         return True
+    def compile(self):
+        return "True"
 class FalseNode(AST):
     def __init__(self):
         pass
@@ -491,6 +577,8 @@ class FalseNode(AST):
         return "False"
     def eval(self, state, subject):
         return False
+    def compile(self):
+        return "False"
 class NoneNode(AST):
     def __init__(self):
         pass
@@ -498,6 +586,8 @@ class NoneNode(AST):
         return "None"
     def eval(self, state, subject):
         return None
+    def compile(self):
+        return "None"
 
 class InitNode(AST):
     def __init__(self, value):
@@ -510,6 +600,46 @@ class InitNode(AST):
             state.lookup("self")()
         except:
             state.lookup("self")
+    def compile(self):
+        pass
+
+class MatchNode(AST):
+    def __init__(self, match: AST, cases: Dict[str, AST]):
+        self.match = match
+        self.cases = cases
+    def __repr__(self):
+        return f"match {self.match} with { {self.cases} }"
+    def eval(self, state, subject):
+        if self.match.eval(state, subject) in self.cases:
+            return "hello world"
+        else:
+            print(self.match.eval(state, subject))
+            print(self.cases)
+    def compile(self):
+        pass
+
+class NextNode(AST):
+    def __init__(self, iter_: AST):
+        self.iter_ = iter_
+    def __repr__(self):
+        return f"next { {self.iter_} }"
+    def eval(self, state, subject):
+        return next(self.iter_.eval(state, subject))
+    def compile(self):
+        pass
+
+class IterNode(AST):
+    def __init__(self, value: AST):
+        self.value = value
+    def __repr__(self):
+        return f"iter { {self.value} }"
+    def eval(self, state, subject):
+        pass
+    def __iter__(self):
+        return self.value
+    def compile(self):
+        pass
+
 
 class WhileExpr(AST):
     def __init__(self, cond: AST, ret: AST, left: AST):
@@ -533,6 +663,11 @@ class WhileExpr(AST):
                 except EarlyBreak as EB:
                     return EB.value
             return x
+    def compile(self):
+        if self.ret == None:
+            return "while "+self.cond.compile()+":\t\n"+self.left.compile()
+        else:
+            return "var ret = @[]\nwhile "+self.cond.compile()+":\t\n"+"ret.add("+self.left.compile()+")", "ret"
 # while
 
 class BinOp(AST):
@@ -575,11 +710,40 @@ class BinOp(AST):
                 return getattr(self.first.eval(state, subject), self.second.eval(state, subject))
             except:
                 return self.first.eval(state, subject)[self.second.eval(state, subject)]
+    def compile(self):
+        if self.op == TokenKind.PLUS:
+            return self.first.compile()+" + "+self.second.compile()
+        elif self.op == TokenKind.MINUS:
+            return self.first.compile()+" - "+self.second.compile()
+        elif self.op == TokenKind.MUL:
+            return self.first.compile()+" * "+self.second.compile()
+        elif self.op == TokenKind.DIV:
+            return self.first.compile()+" / "+self.second.compile()
+        elif self.op == TokenKind.EQ:
+            return self.first.compile()+" == "+self.second.compile()
+        elif self.op == TokenKind.NEQ:
+            return self.first.compile()+" != "+self.second.compile()
+        elif self.op == TokenKind.GREAT:
+            return self.first.compile()+" > "+self.second.compile()
+        elif self.op == TokenKind.LESS:
+            return self.first.compile()+" < "+self.second.compile()
+        elif self.op == TokenKind.IN:
+            return self.first.compile()+" in "+self.second.compile()
+        elif self.op == TokenKind.GE:
+            return self.first.compile()+" >= "+self.second.compile()
+        elif self.op == TokenKind.LE:
+            return self.first.compile()+" <= "+self.second.compile()
+        elif self.op == TokenKind.OR:
+            return self.first.compile()+" or "+self.second.compile()
+        elif self.op == TokenKind.AND:
+            return self.first.compile()+" and "+self.second.compile()
+        elif self.op == TokenKind.DOT:
+            return self.first.compile()+"."+self.second.compile()
 # if 1 == 1 {print "ea"}
         
 class Parser:
     token = Token(1, 1, TokenKind.UNKNOWN, "dummy")
-    operators = [TokenKind.PLUS, TokenKind.MINUS, TokenKind.MUL, TokenKind.DIV, TokenKind.EQ, TokenKind.NEQ, TokenKind.LESS, TokenKind.GREAT, TokenKind.IN, TokenKind.LE, TokenKind.GE, TokenKind.AND, TokenKind.OR, TokenKind.DOT]
+    operators = [TokenKind.PLUS, TokenKind.MINUS, TokenKind.MUL, TokenKind.DIV, TokenKind.EQ, TokenKind.NEQ, TokenKind.LESS, TokenKind.GREAT, TokenKind.IN, TokenKind.LE, TokenKind.GE, TokenKind.AND, TokenKind.OR, TokenKind.DOT, TokenKind.ASSIGN]
 
     def __init__(self, lexer: Lexer):
         self.lexer = lexer
@@ -640,9 +804,9 @@ class Parser:
             return 2
         if op == TokenKind.MINUS:
             return 1
-        if op == TokenKind.EQ or TokenKind.NEQ or TokenKind.IN or TokenKind.LE or TokenKind.GE or TokenKind.AND or TokenKind.OR:
+        if op == TokenKind.EQ or TokenKind.NEQ or TokenKind.IN or TokenKind.LE or TokenKind.GE:
             return 3
-        if op == TokenKind.DOT:
+        if op == TokenKind.DOT or TokenKind.ASSIGN or TokenKind.AND or TokenKind.OR:
             return 4
 
     def next_is_operator(self):
@@ -779,9 +943,14 @@ class Parser:
         return Call(name, args)
  
     def parse_run(self):
+        c = None
+        print("ping 1")
         self.expect(TokenKind.RUN)
+        if self.accept(TokenKind.MINUS):
+            if self.accept(TokenKind.COMP):
+                c = ""
         file = self.expect(TokenKind.STRING).data
-        return Run(file)
+        return Run(c, file)
 
     def parse_string(self):
         data = self.expect(TokenKind.STRING).data
@@ -833,6 +1002,34 @@ class Parser:
             v = self.parse_block()
         return InitNode(v)
 
+    def parse_newline(self):
+        self.expect(TokenKind.NEWLINE)
+        return String("\n")
+
+    def parse_match(self):
+        self.expect(TokenKind.MATCH)
+        cases = {}
+        match = self.parse_expr()
+        self.expect(TokenKind.WITH)
+        self.expect(TokenKind.THEN)
+        while self.token.kind != TokenKind.BLOCKEND:
+            matched = self.parse_expr()
+            self.expect(TokenKind.COLON)
+            result = self.parse_expr()
+            cases[matched] = result
+            self.accept(TokenKind.COMMA)
+        self.expect(TokenKind.BLOCKEND)
+        return MatchNode(match, cases)
+
+    def parse_next_method(self):
+        self.expect(TokenKind.NEXT)
+        try:
+            self.expect(TokenKind.COLON)
+            it = self.parse_expr()
+        except:
+            it = self.parse_block()
+        return NextNode(it)
+
     def parse_term(self):
         t = self.token.kind
         if t == TokenKind.IDENT:
@@ -855,6 +1052,8 @@ class Parser:
             return self.parse_comment()
         elif t == TokenKind.LPAREN:
             return self.parse_parenthesized_expr()
+        elif t == TokenKind.NEWLINE:
+            return self.parse_newline()
         else:
             raise SyntaxError(f"Unexpected token {t}. Row: {self.lexer.row}, Column: {self.lexer.column}")
 
@@ -893,6 +1092,10 @@ class Parser:
             return self.parse_init()
         elif t == TokenKind.ALC:
             return self.parse_alcall()
+        elif t == TokenKind.MATCH:
+            return self.parse_match()
+        elif t == TokenKind.NEXT:
+            return self.parse_next_method()
         else:
             return self.parse_operator_expr()
 
@@ -975,6 +1178,9 @@ def helper(*args):
 
 def dict_(key, value):
     return {key: value}
+
+def next_(x):
+    return next(x)
 
 # Inputs
 while True:
