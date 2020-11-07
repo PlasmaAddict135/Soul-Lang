@@ -9,7 +9,7 @@ Example (main.sio):
 ```go
 print "Hello, from a file!"
 ```
-Then:`sio "main"`
+Then:`sio main`
 
 # Syntax
 
