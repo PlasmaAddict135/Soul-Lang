@@ -68,6 +68,7 @@ TokenKind = Enum(
     NEXT
     COMP
     CMPT
+    ECHO
     '''
 )
 
@@ -143,6 +144,7 @@ class Lexer:
         self.kws['next'] = TokenKind.NEXT
         self.kws['c'] = TokenKind.COMP
         self.kws['$'] = TokenKind.CMPT
+        self.kws['echo'] = TokenKind.ECHO
 
         self.row = 1
         self.column = 1
@@ -283,7 +285,11 @@ class SequenceNode(AST):
         self.first.eval(state, subject)
         return self.second.eval(state, subject)
     def compile(self, state, subject):
-        return self.first.compile(state, subject)+"\n"+self.second.compile(state, subject)
+        try:
+            return self.first.compile(state, subject)+"\n"+self.second.compile(state, subject)
+        except:
+            str(self.first.eval(state, subject))
+            return self.second.compile(state, subject)
 
 class Assign(AST):
     def __init__(self, cmpt: AST, var: AST, assignment: AST):
@@ -363,6 +369,17 @@ class Print(AST):
         else:
             return None
     def compile(self, state, subject):
+        return "echo "+self.data.compile(state, subject)
+
+class Echo(AST):
+    def __init__(self, data: AST):
+        self.data = data
+    def __repr__(self):
+        return f"echo {self.data}"
+    def eval(self, state, subject):
+        return self.data.eval(state, subject)
+    def compile(self, state, subject):
+        print(self.data)
         return "echo "+self.data.compile(state, subject)
 
 class EarlyReturn(Exception):
@@ -557,9 +574,11 @@ class Run(AST):
             f = open(str(self.file)+'.sio', 'r')
             inpt = f.read()
             f.close()
+            start = time.time()
             ast = Parser(Lexer(inpt)).parse_statements()
             out = open(str(self.file)+".nim", 'w')
-            return out.write(ast.compile(state, subject))
+            out.write(ast.compile(state, subject))
+            return "Compiled in: "+str(time.time()-start)+" seconds"
     def compile(self, state, subject):
         return f"import {self.file}"
 
@@ -1009,7 +1028,7 @@ class Parser:
         params = []
         rt = None
         while self.token.kind == TokenKind.IDENT:
-            params.append(self.expect(TokenKind.IDENT).data, self.accept(TokenKind.COLON, self.accept(TokenKind.IDENT).data))
+            params.append(self.expect(TokenKind.IDENT).data)
             self.accept(TokenKind.COMMA)
         self.expect(TokenKind.RPAREN)
         try:
@@ -1103,6 +1122,11 @@ class Parser:
         self.expect(TokenKind.NEWLINE)
         return String("\n")
 
+    def parse_echo(self, cmpt=None):
+        self.expect(TokenKind.ECHO)
+        value = self.parse_expr()
+        return Echo(value)
+
     def parse_match(self, cmpt=None):
         self.expect(TokenKind.MATCH)
         cases = {}
@@ -1134,7 +1158,7 @@ class Parser:
             if self.accept(TokenKind.LPAREN):
                 return self.parse_call(name)
             else:
-                return VarExpr(name)
+                return VarExpr(None, name)
         elif t == TokenKind.INT:
             return self.parse_num()
         elif t == TokenKind.STRING:
@@ -1243,6 +1267,8 @@ class Parser:
             return self.parse_match()
         elif t == TokenKind.NEXT:
             return self.parse_next_method()
+        elif t == TokenKind.ECHO:
+            return self.parse_echo()
         else:
             return self.parse_operator_expr()
 
@@ -1335,11 +1361,22 @@ def next_(x):
 # Inputs
 while True:
     try:
-        f = open(sys.argv[1]+".sio", 'r')
-        inpt = f.read()
-        f.close()
-        print(Parser(Lexer(inpt)).parse_statements().eval(current_state, Lexer(inpt)))
-        break
+        if sys.argv[1] != '-c':
+            f = open(sys.argv[2]+".sio", 'r')
+            inpt = f.read()
+            f.close()
+            print(Parser(Lexer(inpt)).parse_statements().eval(current_state, Lexer(inpt)))
+            break
+        elif sys.argv[1] == '-c':
+            f = open(sys.argv[2]+'.sio', 'r')
+            inpt = f.read()
+            f.close()
+            start = time.time()
+            ast = Parser(Lexer(inpt)).parse_statements()
+            out = open(sys.argv[2]+".nim", 'w')
+            out.write(ast.compile(current_state, inpt))
+            print("Compiled in: "+str(time.time()-start)+" seconds")
+            break
     except:
         inpt = input('>>> ')
         print(Parser(Lexer(inpt)).parse_statements().eval(current_state, Lexer(inpt)))
