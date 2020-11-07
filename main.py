@@ -67,6 +67,7 @@ TokenKind = Enum(
     WITH
     NEXT
     COMP
+    CMPT
     '''
 )
 
@@ -141,6 +142,7 @@ class Lexer:
         self.kws['with'] = TokenKind.WITH
         self.kws['next'] = TokenKind.NEXT
         self.kws['c'] = TokenKind.COMP
+        self.kws['$'] = TokenKind.CMPT
 
         self.row = 1
         self.column = 1
@@ -280,19 +282,24 @@ class SequenceNode(AST):
     def eval(self, state, subject):
         self.first.eval(state, subject)
         return self.second.eval(state, subject)
-    def compile(self):
-        return self.first.compile()+"\n"+self.first.compile()
+    def compile(self, state, subject):
+        return self.first.compile(state, subject)+"\n"+self.second.compile(state, subject)
 
 class Assign(AST):
-    def __init__(self, var: AST, assignment: AST):
+    def __init__(self, cmpt: AST, var: AST, assignment: AST):
         self.var = var
         self.assignment = assignment
+        self.cmpt = cmpt
     def __repr__(self):
         return self.var
     def eval(self, state, subject):
         state.bind(self.var, self.assignment.eval(state, subject))
-    def compile(self):
-        return "var "+self.var.compile()+" = "+self.assignment.compile()
+    def compile(self, state, subject):
+        if self.cmpt == None:
+            return "var "+self.var.compile(state, subject)+" = "+self.assignment.compile(state, subject)
+        else:
+            state.bind(self.var, self.assignment.eval(state, subject))
+            state.lookup(self.var)
 
 class AlgerbraicVariable(AST):
     def __init__(self, var: AST):
@@ -301,7 +308,7 @@ class AlgerbraicVariable(AST):
         return self.var
     def eval(self, state, subject):
         state.bind(self.var, None)
-    def compile(self):
+    def compile(self, state, subject):
         pass
 
 class AlgebraicCalling(AST):
@@ -311,7 +318,7 @@ class AlgebraicCalling(AST):
         return self.name
     def eval(self, state, subject):
         state.lookup(self.name)
-    def compile(self):
+    def compile(self, state, subject):
         pass
 
 class NumExpr(AST):
@@ -321,7 +328,7 @@ class NumExpr(AST):
         return str(self.val)
     def eval(self, state, subject):
         return self.val
-    def compile(self):
+    def compile(self, state, subject):
         return str(self.val)
 
 class String(AST):
@@ -330,8 +337,8 @@ class String(AST):
     def __repr__(self):
         return self.string
     def eval(self, state, subject):
-        return self.string
-    def compile(self):
+        return (self.string).strip("\\n")
+    def compile(self, state, subject):
         return '"'+self.string+'"'
 
 class Comment:
@@ -339,7 +346,7 @@ class Comment:
         self.comment = comment
     def eval(self, state, subject):
         pass
-    def compile(self):
+    def compile(self, state, subject):
         pass
 
 ######################################
@@ -356,9 +363,8 @@ class Print(AST):
             print(self.data.eval(state, subject))
         else:
             return None
-    def compile(self):
-        print(self.data.compile())
-        return "echo "+self.data.compile()
+    def compile(self, state, subject):
+        return "stdout.write("+self.data.compile(state, subject)+")"
 
 class EarlyReturn(Exception):
     def __init__(self, value):
@@ -375,7 +381,7 @@ class BreakNode(AST):
         return self.value
     def eval(self, state, subject):
         raise EarlyBreak(self.value.eval(state, subject))
-    def compile(self):
+    def compile(self, state, subject):
         return "break"
 
 class ReturnNode(AST):
@@ -385,14 +391,15 @@ class ReturnNode(AST):
         return self.value
     def eval(self, state, subject):
         raise EarlyReturn(self.value.eval(state, subject))
-    def compile(self):
-        return "return "+self.value.compile()
+    def compile(self, state, subject):
+        return "return "+self.value.compile(state, subject)
 
 class TypeReturnNode(Exception):
     pass
 
 class FunctionNode(AST):
-    def __init__(self, name: AST, params: List[str], return_type: AST, body: AST):
+    def __init__(self, cmpt: AST, name: AST, params: List[str], return_type: AST, body: AST):
+        self.cmpt = cmpt
         self.name = name
         self.params = params
         self.return_type = return_type
@@ -428,14 +435,42 @@ class FunctionNode(AST):
 
         state.bind(self.name, call_fn)
         state_copy.bind(self.name, call_fn)
-    def compile(self):
-        return "method "+self.name+"("+str(self.params)[1:-1].strip("'")+"): "+self.return_type.compile()+" =\n\t"+self.body.compile()
+    def compile(self, state, subject):
+        if self.cmpt == None:
+            return "method "+self.name+"("+str(self.params)[1:-1].strip("'")+"): "+self.return_type.compile(state, subject)+" =\n    "+self.body.compile(state, subject)
+        else:
+            state_copy = State()
+            state_copy.vals = state.vals.copy()
+
+            def call_fn(*args):
+                state_copy = State()
+                state_copy.vals = state.vals.copy()
+                if len(args) != len(self.params):
+                    raise SyntaxError(f"FunctionCallError: Invalid number of args. Row: {subject.row}, Column: {subject.column}")
+
+                for (param, arg) in zip(self.params, args):
+                    state_copy.bind(param, arg)
+
+                try:
+                    return self.body.eval(state_copy, subject)
+                except EarlyReturn as ER:
+                    if self.return_type != None:
+                        if type(ER.value) == self.return_type.eval(current_state, subject):
+                            return ER.value
+                        if type(ER.value) != self.return_type.eval(current_state, subject):
+                            raise TypeReturnNode(f"Function did not return type specified. Row: {subject.row}, Column: {subject.column}")
+                    else:
+                        return ER.value
+            state.bind(self.name, call_fn)
+            state_copy.bind(self.name, call_fn)
+
 
 # Thanks Crunch! Very based!
 class Call(AST):
-    def __init__(self, name: str, args: List[AST]):
+    def __init__(self, cmpt: AST, name: str, args: List[AST]):
         self.name = name
         self.args = args
+        self.cmpt = cmpt
     def __repr__(self):
         return self.name
     def eval(self, state, subject):
@@ -449,8 +484,20 @@ class Call(AST):
             return function(*args)
         else:
             raise SyntaxError(f"FunctionCallError: This identifier does not belong to a function. Row: {subject.row}, Column: {subject.column}")
-    def compile(self):
-        return self.name+"("+str(self.args)[1:-1].strip("'")+")"
+    def compile(self, state, subject):
+        if self.cmpt == None:
+            return self.name+"("+str(self.args)[1:-1].strip("'")+")"
+        else:
+            try:
+                function = state.lookup(self.name)
+            except:
+                function = self.name.eval(state, subject)
+
+            if callable(function):
+                args = map(lambda arg: arg.eval(state, subject), self.args)
+                return str(function(*args))
+            else:
+                raise SyntaxError(f"FunctionCallError: This identifier does not belong to a function. Row: {subject.row}, Column: {subject.column}")
        
 class InputNode(AST):
     def __init__(self, prompt: AST):
@@ -459,7 +506,7 @@ class InputNode(AST):
         return f'input {self.prompt}'
     def eval(self, state, subject):
         return input(self.prompt.eval(state, subject))
-    def compile(self):
+    def compile(self, state, subject):
         return "readLine(stdin)"
 
 class VarExpr(AST):
@@ -469,7 +516,7 @@ class VarExpr(AST):
         return self.name
     def eval(self, state, subject):
         return state.lookup(self.name)
-    def compile(self):
+    def compile(self, state, subject):
         return self.name
 
 class RaiseNode(AST):
@@ -479,7 +526,7 @@ class RaiseNode(AST):
         return f'raise {self.value}'
     def eval(self, state, subject):
         raise self.value.eval(state, subject)
-    def compile(self):
+    def compile(self, state, subject):
         return f"raise {self.value}"
 
 class Run(AST):
@@ -496,14 +543,13 @@ class Run(AST):
             ast = Parser(Lexer(inpt)).parse_statements()
             return ast.eval(state, subject)
         elif self.c != None:
-            print("ping 2")
             f = open(self.file+'.sio', 'r')
             inpt = f.read()
             f.close()
             ast = Parser(Lexer(inpt)).parse_statements()
             out = open(self.file+".nim", 'w')
-            return out.write(ast.compile())
-    def compile(self):
+            return out.write(ast.compile(state, subject))
+    def compile(self, state, subject):
         return f"import {self.file}"
 
 class SyntaxError(Exception):
@@ -521,11 +567,11 @@ class IfExpr(AST):
             return self.left.eval(state, subject)
         elif self.right != None:
             return self.right.eval(state, subject)
-    def compile(self):
+    def compile(self, state, subject):
         if self.right == None:
-            return "if "+self.cond.compile()+":\n\t"+self.left.compile()
+            return "if "+self.cond.compile(state, subject)+":\n    "+self.left.compile(state, subject)
         elif self.right != None:
-            return "if "+self.cond.compile()+":\n\t"+self.left.compile()+" else:\n\t"+self.right.compile()
+            return "if "+self.cond.compile(state, subject)+":\n    "+self.left.compile(state, subject)+" else:\n    "+self.right.compile(state, subject)
 
 class AssertNode(AST):
     def __init__(self, value):
@@ -534,7 +580,7 @@ class AssertNode(AST):
         return f"assert {self.value}"
     def eval(self, state, subject):
         assert self.value.eval(state, subject)
-    def compile(self):
+    def compile(self, state, subject):
         return f"assert {self.value}"
 
 class TryExceptNode(AST):
@@ -555,11 +601,11 @@ class TryExceptNode(AST):
                 return self.left.eval(state, subject)
             except self.specified:
                 return self.right.eval(state, subject)
-    def compile(self):
+    def compile(self, state, subject):
         if self.specified == None:
-            return "try:\n\t"+self.left.compile(), "except:\n\t"+self.right.compile()
+            return "try:\n    "+self.left.compile(state, subject), "except:\n    "+self.right.compile(state, subject)
         else:
-            return "try:\n\t"+self.left.compile(), f"except {self.specified}:\n\t"+self.right.compile()
+            return "try:\n    "+self.left.compile(state, subject), f"except {self.specified}:\n    "+self.right.compile(state, subject)
 
 class TrueNode(AST):
     def __init__(self):
@@ -568,7 +614,7 @@ class TrueNode(AST):
         return "True"
     def eval(self, state, subject):
         return True
-    def compile(self):
+    def compile(self, state, subject):
         return "True"
 class FalseNode(AST):
     def __init__(self):
@@ -577,7 +623,7 @@ class FalseNode(AST):
         return "False"
     def eval(self, state, subject):
         return False
-    def compile(self):
+    def compile(self, state, subject):
         return "False"
 class NoneNode(AST):
     def __init__(self):
@@ -586,7 +632,7 @@ class NoneNode(AST):
         return "None"
     def eval(self, state, subject):
         return None
-    def compile(self):
+    def compile(self, state, subject):
         return "None"
 
 class InitNode(AST):
@@ -600,7 +646,7 @@ class InitNode(AST):
             state.lookup("self")()
         except:
             state.lookup("self")
-    def compile(self):
+    def compile(self, state, subject):
         pass
 
 class MatchNode(AST):
@@ -615,7 +661,7 @@ class MatchNode(AST):
         else:
             print(self.match.eval(state, subject))
             print(self.cases)
-    def compile(self):
+    def compile(self, state, subject):
         pass
 
 class NextNode(AST):
@@ -625,7 +671,7 @@ class NextNode(AST):
         return f"next { {self.iter_} }"
     def eval(self, state, subject):
         return next(self.iter_.eval(state, subject))
-    def compile(self):
+    def compile(self, state, subject):
         pass
 
 class IterNode(AST):
@@ -637,7 +683,7 @@ class IterNode(AST):
         pass
     def __iter__(self):
         return self.value
-    def compile(self):
+    def compile(self, state, subject):
         pass
 
 
@@ -663,11 +709,11 @@ class WhileExpr(AST):
                 except EarlyBreak as EB:
                     return EB.value
             return x
-    def compile(self):
+    def compile(self, state, subject):
         if self.ret == None:
-            return "while "+self.cond.compile()+":\t\n"+self.left.compile()
+            return "while "+self.cond.compile(state, subject)+":\t\n"+self.left.compile(state, subject)
         else:
-            return "var ret = @[]\nwhile "+self.cond.compile()+":\t\n"+"ret.add("+self.left.compile()+")", "ret"
+            return "var ret = @[]\nwhile "+self.cond.compile(state, subject)+":\t\n"+"ret.add("+self.left.compile(state, subject)+")", "ret"
 # while
 
 class BinOp(AST):
@@ -710,35 +756,35 @@ class BinOp(AST):
                 return getattr(self.first.eval(state, subject), self.second.eval(state, subject))
             except:
                 return self.first.eval(state, subject)[self.second.eval(state, subject)]
-    def compile(self):
+    def compile(self, state, subject):
         if self.op == TokenKind.PLUS:
-            return self.first.compile()+" + "+self.second.compile()
+            return self.first.compile(state, subject)+" + "+self.second.compile(state, subject)
         elif self.op == TokenKind.MINUS:
-            return self.first.compile()+" - "+self.second.compile()
+            return self.first.compile(state, subject)+" - "+self.second.compile(state, subject)
         elif self.op == TokenKind.MUL:
-            return self.first.compile()+" * "+self.second.compile()
+            return self.first.compile(state, subject)+" * "+self.second.compile(state, subject)
         elif self.op == TokenKind.DIV:
-            return self.first.compile()+" / "+self.second.compile()
+            return self.first.compile(state, subject)+" / "+self.second.compile(state, subject)
         elif self.op == TokenKind.EQ:
-            return self.first.compile()+" == "+self.second.compile()
+            return self.first.compile(state, subject)+" == "+self.second.compile(state, subject)
         elif self.op == TokenKind.NEQ:
-            return self.first.compile()+" != "+self.second.compile()
+            return self.first.compile(state, subject)+" != "+self.second.compile(state, subject)
         elif self.op == TokenKind.GREAT:
-            return self.first.compile()+" > "+self.second.compile()
+            return self.first.compile(state, subject)+" > "+self.second.compile(state, subject)
         elif self.op == TokenKind.LESS:
-            return self.first.compile()+" < "+self.second.compile()
+            return self.first.compile(state, subject)+" < "+self.second.compile(state, subject)
         elif self.op == TokenKind.IN:
-            return self.first.compile()+" in "+self.second.compile()
+            return self.first.compile(state, subject)+" in "+self.second.compile(state, subject)
         elif self.op == TokenKind.GE:
-            return self.first.compile()+" >= "+self.second.compile()
+            return self.first.compile(state, subject)+" >= "+self.second.compile(state, subject)
         elif self.op == TokenKind.LE:
-            return self.first.compile()+" <= "+self.second.compile()
+            return self.first.compile(state, subject)+" <= "+self.second.compile(state, subject)
         elif self.op == TokenKind.OR:
-            return self.first.compile()+" or "+self.second.compile()
+            return self.first.compile(state, subject)+" or "+self.second.compile(state, subject)
         elif self.op == TokenKind.AND:
-            return self.first.compile()+" and "+self.second.compile()
+            return self.first.compile(state, subject)+" and "+self.second.compile(state, subject)
         elif self.op == TokenKind.DOT:
-            return self.first.compile()+"."+self.second.compile()
+            return self.first.compile(state, subject)+"."+self.second.compile(state, subject)
 # if 1 == 1 {print "ea"}
         
 class Parser:
@@ -869,11 +915,14 @@ class Parser:
         return AlgebraicCalling(ident)
     
     def parse_assign(self):
+        cmpt = None
+        if self.accept(TokenKind.CMPT):
+            cmpt = ""
         self.expect(TokenKind.VAR)
         ident = self.expect(TokenKind.IDENT).data
         self.expect(TokenKind.ASSIGN)
         value = self.parse_expr()
-        return Assign(ident, value)
+        return Assign(cmpt, ident, value)
     
     def parse_alg(self):
         self.expect(TokenKind.ALGEBRA)
@@ -905,6 +954,9 @@ class Parser:
         return Print(d)
 
     def parse_function(self):
+        cmpt = None
+        if self.accept(TokenKind.CMPT):
+            cmpt = ""
         self.expect(TokenKind.FUNC)
         name = self.expect(TokenKind.IDENT).data
         self.expect(TokenKind.LPAREN)
@@ -912,6 +964,8 @@ class Parser:
         rt = None
         while self.token.kind == TokenKind.IDENT:
             params.append(self.expect(TokenKind.IDENT).data)
+            if self.accept(TokenKind.COLON):
+                self.expect(TokenKind.IDENT).data
             self.accept(TokenKind.COMMA)
         self.expect(TokenKind.RPAREN)
         try:
@@ -919,7 +973,7 @@ class Parser:
         except:
             rt = None
         code = self.parse_block()
-        return FunctionNode(name, params, rt, code)
+        return FunctionNode(cmpt, name, params, rt, code)
 # WORKING: func foo(arg) int { return arg }
 # WORKING: func foo(arg) { return arg }
 
@@ -933,18 +987,17 @@ class Parser:
         value = self.parse_operator_expr()
         return BreakNode(value)
 
-    def parse_call(self, name):
+    def parse_call(self, name, cmpt):
         args = []
         while self.token.kind != TokenKind.RPAREN:
             # CHECK TO SEE IF THIS CAUSES AN ERROR, IF IT DOES CHANGE BACK TO parse_operator_expr()
             args.append(self.parse_expr())
             self.accept(TokenKind.COMMA)
         self.expect(TokenKind.RPAREN)
-        return Call(name, args)
+        return Call(cmpt, name, args)
  
     def parse_run(self):
         c = None
-        print("ping 1")
         self.expect(TokenKind.RUN)
         if self.accept(TokenKind.MINUS):
             if self.accept(TokenKind.COMP):
@@ -1033,9 +1086,10 @@ class Parser:
     def parse_term(self):
         t = self.token.kind
         if t == TokenKind.IDENT:
+            cmpt = None
             name = self.expect(TokenKind.IDENT).data
             if self.accept(TokenKind.LPAREN):
-                return self.parse_call(name)
+                return self.parse_call(name, cmpt)
             else:
                 return VarExpr(name)
         elif t == TokenKind.INT:
@@ -1090,6 +1144,12 @@ class Parser:
             return self.parse_assert()
         elif t == TokenKind.INIT:
             return self.parse_init()
+        elif t == TokenKind.CMPT:
+            cmpt = ""
+            self.expect(TokenKind.CMPT)
+            name = self.expect(TokenKind.IDENT).data
+            if self.accept(TokenKind.LPAREN):
+                return self.parse_call(name, cmpt)
         elif t == TokenKind.ALC:
             return self.parse_alcall()
         elif t == TokenKind.MATCH:
@@ -1111,6 +1171,9 @@ def delete(variable):
 
 def array(*args):
     return list(args)
+
+def test():
+    return 9999
 
 def append(l, x):
     return l.append(x)
