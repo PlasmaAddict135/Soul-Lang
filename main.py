@@ -556,7 +556,8 @@ class SyntaxError(Exception):
     pass
 
 class IfExpr(AST):
-    def __init__(self, cond: AST, left: AST, right: AST):
+    def __init__(self, cmpt: AST, cond: AST, left: AST, right: AST):
+        self.cmpt = cmpt
         self.cond = cond 
         self.left = left 
         self.right = right
@@ -568,10 +569,16 @@ class IfExpr(AST):
         elif self.right != None:
             return self.right.eval(state, subject)
     def compile(self, state, subject):
-        if self.right == None:
-            return "if "+self.cond.compile(state, subject)+":\n    "+self.left.compile(state, subject)
-        elif self.right != None:
-            return "if "+self.cond.compile(state, subject)+":\n    "+self.left.compile(state, subject)+" else:\n    "+self.right.compile(state, subject)
+        if self.cmpt == None:
+            if self.right == None:
+                return "if "+self.cond.compile(state, subject)+":\n    "+self.left.compile(state, subject)
+            elif self.right != None:
+                return "if "+self.cond.compile(state, subject)+":\n    "+self.left.compile(state, subject)+" else:\n    "+self.right.compile(state, subject)
+        else:
+            if self.cond.eval(state, subject):
+                return str(self.left.eval(state, subject))
+            elif self.right != None:
+                return str(self.right.eval(state, subject))
 
 class AssertNode(AST):
     def __init__(self, value):
@@ -584,7 +591,8 @@ class AssertNode(AST):
         return f"assert {self.value}"
 
 class TryExceptNode(AST):
-    def __init__(self, left, specified, right):
+    def __init__(self, cmpt: AST, left: AST, specified: AST, right: AST):
+        self.cmpt = cmpt
         self.left = left
         self.right = right
         self.specified = specified
@@ -602,10 +610,22 @@ class TryExceptNode(AST):
             except self.specified:
                 return self.right.eval(state, subject)
     def compile(self, state, subject):
-        if self.specified == None:
-            return "try:\n    "+self.left.compile(state, subject), "except:\n    "+self.right.compile(state, subject)
+        if self.cmpt == None:
+            if self.specified == None:
+                return "try:\n    "+self.left.compile(state, subject), "except:\n    "+self.right.compile(state, subject)
+            else:
+                return "try:\n    "+self.left.compile(state, subject), f"except {self.specified}:\n    "+self.right.compile(state, subject)
         else:
-            return "try:\n    "+self.left.compile(state, subject), f"except {self.specified}:\n    "+self.right.compile(state, subject)
+            if self.specified == None:
+                try:
+                    return str(self.left.eval(state, subject))
+                except:
+                    return str(self.right.eval(state, subject))
+            else:
+                try:
+                    return str(self.left.eval(state, subject))
+                except self.specified:
+                    return str(self.right.eval(state, subject))
 
 class TrueNode(AST):
     def __init__(self):
@@ -647,7 +667,11 @@ class InitNode(AST):
         except:
             state.lookup("self")
     def compile(self, state, subject):
-        pass
+        state.bind("self", self.value.eval(state, subject))
+        try:
+            state.lookup("self")()
+        except:
+            state.lookup("self")
 
 class MatchNode(AST):
     def __init__(self, match: AST, cases: Dict[str, AST]):
@@ -688,7 +712,8 @@ class IterNode(AST):
 
 
 class WhileExpr(AST):
-    def __init__(self, cond: AST, ret: AST, left: AST):
+    def __init__(self, cmpt: AST, cond: AST, ret: AST, left: AST):
+        self.cmpt = cmpt
         self.cond = cond 
         self.left = left 
         self.ret = ret
@@ -710,10 +735,26 @@ class WhileExpr(AST):
                     return EB.value
             return x
     def compile(self, state, subject):
-        if self.ret == None:
-            return "while "+self.cond.compile(state, subject)+":\t\n"+self.left.compile(state, subject)
+        if self.cmpt == None:
+            if self.ret == None:
+                return "while "+self.cond.compile(state, subject)+":\t\n"+self.left.compile(state, subject)
+            else:
+                return "var ret = @[]\nwhile "+self.cond.compile(state, subject)+":\t\n"+"ret.add("+self.left.compile(state, subject)+")", "ret"
         else:
-            return "var ret = @[]\nwhile "+self.cond.compile(state, subject)+":\t\n"+"ret.add("+self.left.compile(state, subject)+")", "ret"
+            x = []
+            if self.ret == None:
+                while self.cond.eval(state, subject):
+                    try:
+                        str(x.append(self.left.eval(state, subject)))
+                    except EarlyBreak as EB:
+                        return str(EB.value)
+            else:
+                while self.cond.eval(state, subject):
+                    try:
+                        str(x.append(self.left.eval(state, subject)))
+                    except EarlyBreak as EB:
+                        return str(EB.value)
+                return str(x)
 # while
 
 class BinOp(AST):
@@ -821,15 +862,21 @@ class Parser:
             return False
 
     def parse_while(self):
+        cmpt = None
         ret = None
+        if self.accept(TokenKind.COMPT):
+            cmpt = ""
         self.expect(TokenKind.WHILE)
         if self.accept(TokenKind.RET):
             ret = ""
         cond = self.parse_statements()
         then = self.parse_block()
-        return WhileExpr(cond, ret, then)
+        return WhileExpr(cmpt, cond, ret, then)
 
     def parse_if(self):
+        cmpt = None
+        if self.accept(TokenKind.CMPT):
+            cmpt = ""
         self.expect(TokenKind.IF)
         cond = self.parse_statements()
         then = self.parse_block()
@@ -839,7 +886,7 @@ class Parser:
                 els = self.parse_block()
             except:
                 els = self.parse_expr()
-        return IfExpr(cond, then, els)
+        return IfExpr(cmpt, cond, then, els)
 
     def prece(self, op: TokenKind):
         if op == TokenKind.PLUS:
@@ -963,9 +1010,7 @@ class Parser:
         params = []
         rt = None
         while self.token.kind == TokenKind.IDENT:
-            params.append(self.expect(TokenKind.IDENT).data)
-            if self.accept(TokenKind.COLON):
-                self.expect(TokenKind.IDENT).data
+            params.append(self.expect(TokenKind.IDENT).data, self.accept(TokenKind.COLON, self.accept(TokenKind.IDENT).data))
             self.accept(TokenKind.COMMA)
         self.expect(TokenKind.RPAREN)
         try:
@@ -1031,6 +1076,9 @@ class Parser:
         return NoneNode()
 
     def parse_try_except(self):
+        cmpt = None
+        if self.accept(TokenKind.CMPT):
+            cmpt = ""
         self.expect(TokenKind.TRY)
         s = None
         left = self.parse_block()
@@ -1040,7 +1088,7 @@ class Parser:
         except:
             s = self.expect(TokenKind.IDENT)
             right = self.parse_block()
-        return TryExceptNode(left, s, right)
+        return TryExceptNode(cmpt, left, s, right)
 
     def parse_raise(self):
         self.expect(TokenKind.RAISE)
