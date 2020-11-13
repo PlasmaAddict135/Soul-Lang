@@ -160,6 +160,7 @@ class Lexer:
         self.kws['echo'] = TokenKind.ECHO
         self.kws['switch'] = TokenKind.SWITCH
         self.kws['case'] = TokenKind.CASE
+        self.kws['!'] = TokenKind.EXCLMK
 
         self.row = 1
         self.column = 1
@@ -237,7 +238,7 @@ class Lexer:
                     kind = TokenKind.NEQ
                     self.eat()
                 else:
-                    kind = TokenKind.UNKOWN
+                    kind = TokenKind.EXCLMK
             if kind == TokenKind.IDENT:
                 kind = TokenKind.UNKNOWN
             return Token(self.row, self.column, kind, ch)
@@ -385,7 +386,7 @@ class String(AST):
     def __repr__(self):
         return self.string
     def eval(self, state, subject):
-        return (self.string).strip("\\n")
+        return self.string
     def compile(self, state, subject, ind):
         return '"'+self.string+'"'
 
@@ -627,6 +628,7 @@ class Run(AST):
                 return "Compiled in: "+str(time.time()-start)+" seconds"
             elif self.roc != None:
                 print("Compiled in: "+str(time.time()-start)+" seconds")
+                print(self.file)
                 def prCyan(skk): print('\x1b[0;36m' + skk + '\x1b[0m') 
                 prCyan("\bExecuting with Nim compiler...")
                 sub.Popen(['cmd', '/K', f'nim c -r {self.file}'])
@@ -1208,6 +1210,7 @@ class Parser:
             self.accept(TokenKind.COMMA)
         self.expect(TokenKind.BLOCKEND)
         return MatchNode(match, cases)
+    # !self.foo: foo
 
     def parse_term(self):
         t = self.token.kind
@@ -1426,15 +1429,28 @@ while True:
             print(Parser(Lexer(inpt)).parse_statements().eval(current_state, Lexer(inpt)))
             break
         elif sys.argv[1] == '-c':
-            f = open(sys.argv[2]+'.sio', 'r')
-            inpt = f.read()
-            f.close()
-            start = time.time()
-            ast = Parser(Lexer(inpt)).parse_statements()
-            out = open(sys.argv[2]+".nim", 'w')
-            out.write(ast.compile(current_state, inpt))
-            print("Compiled in: "+str(time.time()-start)+" seconds")
-            break
+            if sys.argv[2] != '-r':
+                f = open(sys.argv[2]+'.sio', 'r')
+                inpt = f.read()
+                f.close()
+                start = time.time()
+                ast = Parser(Lexer(inpt)).parse_statements()
+                out = open(sys.argv[2]+".nim", 'w')
+                out.write(ast.compile(current_state, inpt, ind))
+                print("Compiled in: "+str(time.time()-start)+" seconds")
+                break
+            else:
+                f = open(sys.argv[3]+".sio", 'r')
+                inpt = f.read()
+                f.close()
+                start = time.time()
+                ast = Parser(Lexer(inpt)).parse_statements()
+                out = open(sys.argv[3]+".nim", 'w')
+                out.write(ast.compile(current_state, inpt, ind))
+                print("Compiled in: "+str(time.time()-start)+" seconds")
+                print("\bExecuting with Nim compiler...")
+                sub.Popen(['cmd', '/K', f'nim c -r {sys.argv[3]}'])
+                break
     except:
         inpt = input('>>> ')
         print(Parser(Lexer(inpt)).parse_statements().eval(current_state, Lexer(inpt)))
