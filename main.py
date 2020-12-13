@@ -911,11 +911,7 @@ class BinOp(AST):
         elif self.op == TokenKind.AND:
             return self.first.eval(state, subject) and self.second.eval(state, subject)
         elif self.op == TokenKind.DOT:
-            name = None
-            try:
-                name = VarExpr(None, self.second).name
-            except:
-                name = self.second.eval(state, subject)
+            name = self.second.eval(state, subject)
             try:
                 # NOTE: Enums are accessed by doing: (x being an enum with atribute Y) x."Y"
                 return getattr(self.first.eval(state, subject), name)
@@ -1044,22 +1040,13 @@ class Parser:
         if self.next_is_operator():
             next_ = self.parse_operator()
             if self.prece(op) >= self.prece(next_):
-                if self.accept(TokenKind.LPAREN):
-                    return self.parse_call(self.parse_binop(BinOp(first, op, second), next_))
-                else:
-                    return self.parse_binop(BinOp(first, op, second), next_)  # Binop(first, op, second) becomes the 
+                return self.parse_binop(BinOp(first, op, second), next_)  # Binop(first, op, second) becomes the 
                                                                     # first for the recursive call
             else:  # prece(next) > prece(op)
-                if self.accept(TokenKind.LPAREN):
-                    return self.parse_call(BinOp(first, op, self.parse_binop(second, next_)))
-                else:
-                    return BinOp(first, op, self.parse_binop(second, next_))  # recurse to the right, and make the 
+                return BinOp(first, op, self.parse_binop(second, next_))  # recurse to the right, and make the 
                                                                     # resulting expr the second for this call
         else:
-            if self.accept(TokenKind.LPAREN):
-                return self.parse_call(BinOp(first, op, second))
-            else:
-                return BinOp(first, op, second)
+            return BinOp(first, op, second)
 
     def parse_num(self, cmpt=None):
         data = self.expect(TokenKind.INT).data
@@ -1283,31 +1270,10 @@ class Parser:
         t = self.token.kind
         if t == TokenKind.IDENT:
             name = self.expect(TokenKind.IDENT).data
-            if self.accept(TokenKind.LPAREN):
-                print("e")
-                return self.parse_call(name)
-            elif self.accept(TokenKind.RARROW):
+            if self.accept(TokenKind.RARROW):
                 return self.parse_array(None, name)
             else:
                 return VarExpr(None, name)
-        elif t == TokenKind.INT:
-            return self.parse_num()
-        elif t == TokenKind.STRING:
-            return self.parse_string()
-        elif t == TokenKind.TRUE:
-            return self.parse_true()
-        elif t == TokenKind.FALSE:
-            return self.parse_false()
-        elif t == TokenKind.NONE:
-            return self.parse_none()
-        elif t == TokenKind.COMMENT:
-            return self.parse_comment()
-        elif t == TokenKind.LPAREN:
-            return self.parse_parenthesized_expr()
-        elif t == TokenKind.NEWLINE:
-            return self.parse_newline()
-        else:
-            raise SyntaxError(f"Unexpected token {t}. Row: {self.lexer.row}, Column: {self.lexer.column}")
 
     def parse_compile_time(self, cmpt):
         self.consume()
