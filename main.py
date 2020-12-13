@@ -1274,6 +1274,24 @@ class Parser:
                 return self.parse_array(None, name)
             else:
                 return VarExpr(None, name)
+        elif t == TokenKind.INT:
+            return self.parse_num()
+        elif t == TokenKind.STRING:
+            return self.parse_string()
+        elif t == TokenKind.TRUE:
+            return self.parse_true()
+        elif t == TokenKind.FALSE:
+            return self.parse_false()
+        elif t == TokenKind.NONE:
+            return self.parse_none()
+        elif t == TokenKind.COMMENT:
+            return self.parse_comment()
+        elif t == TokenKind.LPAREN:
+            return self.parse_parenthesized_expr()
+        elif t == TokenKind.NEWLINE:
+            return self.parse_newline()
+        else:
+            raise SyntaxError(f"Unexpected token {t}. Row: {self.lexer.row}, Column: {self.lexer.column}")
 
     def parse_compile_time(self, cmpt):
         self.consume()
