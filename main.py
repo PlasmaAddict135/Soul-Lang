@@ -2,9 +2,10 @@ import subprocess as sub
 from enum import Enum
 from collections import defaultdict
 from os import error
-from typing import Dict, List
+from typing import Dict, Iterable, List, overload
 import sys
 import time
+from math import sin, cos
 
 TokenKind = Enum(
     'TokenKind',
@@ -76,6 +77,7 @@ TokenKind = Enum(
     DENDENT
     SWITCH
     CASE
+    RARROW
     '''
 )
 
@@ -161,6 +163,7 @@ class Lexer:
         self.kws['switch'] = TokenKind.SWITCH
         self.kws['case'] = TokenKind.CASE
         self.kws['!'] = TokenKind.EXCLMK
+        self.kws['->'] = TokenKind.RARROW
 
         self.row = 1
         self.column = 1
@@ -194,9 +197,9 @@ class Lexer:
 
     # RECOGNIZE NEXT TOKEN
     def __next__(self):
+        self.consume_whitespace()
         if self.idx >= len(self.src):
             raise StopIteration
-        self.consume_whitespace()
         ch = self.src[self.idx]
         if ch.isalpha() or ch == '_':
             return self.lex_ident()
@@ -239,6 +242,12 @@ class Lexer:
                     self.eat()
                 else:
                     kind = TokenKind.EXCLMK
+            if kind == TokenKind.MINUS:
+                if self.kws[nch] == TokenKind.GREAT:
+                    kind = TokenKind.RARROW
+                    self.eat()
+                else:
+                    kind = TokenKind.MINUS
             if kind == TokenKind.IDENT:
                 kind = TokenKind.UNKNOWN
             return Token(self.row, self.column, kind, ch)
@@ -305,7 +314,7 @@ class Lexer:
 ########################################
 
 class AST:
-    pass 
+    pass
 
 class State:
     # vals = {}
@@ -484,6 +493,8 @@ class FunctionNode(AST):
         def call_fn(*args):
             state_copy = State()
             state_copy.vals = state.vals.copy()
+            state_copy.bind("self", state_copy.vals)
+ 
             if len(args) != len(self.params):
                 raise SyntaxError(f"FunctionCallError: Invalid number of args. Row: {subject.row}, Column: {subject.column}")
 
@@ -535,23 +546,21 @@ class FunctionNode(AST):
 
 # Thanks Crunch! Very based!
 class Call(AST):
-    def __init__(self, cmpt: AST, name: str, args: List[AST]):
-        self.name = name
+    def __init__(self, cmpt: AST, func: AST, args: List[AST]):
+        self.func = func
         self.args = args
         self.cmpt = cmpt
     def __repr__(self):
-        return self.name
+        return self.func
     def eval(self, state, subject):
-        try:
-            function = state.lookup(self.name)
-        except:
-            function = self.name.eval(state, subject)
+        function = self.func.eval(state, subject)
 
         if callable(function):
             args = map(lambda arg: arg.eval(state, subject), self.args)
             return function(*args)
         else:
-            raise SyntaxError(f"FunctionCallError: This identifier does not belong to a function. Row: {subject.row}, Column: {subject.column}")
+            raise SyntaxError(f"FunctionCallError: The identifier {self.func} does not belong to a function. Row: {subject.row}, Column: {subject.column}")
+
     def compile(self, state, subject, ind):
         if self.cmpt == None:
             args = map(lambda arg: arg.compile(state, subject, ind), self.args)
@@ -834,6 +843,39 @@ class WhileExpr(AST):
                 return str(x)
 # while
 
+class TypeNode(AST):
+    def __init__(self, name: AST, body: Dict[AST, AST]):
+        self.name = name
+        self.body = body
+    def __repr__(self):
+        return f"type {self.name} { {self.body} }"
+    def eval(self, state, subject):
+        cont = {}
+        for i in self.body.values():
+            for j in self.body.items():
+                state.bind(i, state.lookup(j))
+                cont[i] = j
+        type(self.name, (object, ), cont)
+
+class Array(AST):
+    def __init__(self, type_: AST, values: List[AST]):
+        self.type = type_
+        self.values = values
+    def __repr__(self):
+        return f"{self.type} -> {self.values}"
+    def eval(self, state, subject):
+        vals = set([type(i.eval(state, subject)) for i in self.values])
+        tvals = {}
+
+        for i in vals: tvals = i
+        if self.type != "any":
+            if tvals == state.lookup(self.type):
+                return self.values
+            else:
+                raise TypeError("Type of list elements did not match specification")
+        else:
+            return self.values
+
 class BinOp(AST):
     def __init__(self, first: AST, op, second: AST):
         self.op = op
@@ -869,11 +911,16 @@ class BinOp(AST):
         elif self.op == TokenKind.AND:
             return self.first.eval(state, subject) and self.second.eval(state, subject)
         elif self.op == TokenKind.DOT:
+            name = None
+            try:
+                name = VarExpr(None, self.second).name
+            except:
+                name = self.second.eval(state, subject)
             try:
                 # NOTE: Enums are accessed by doing: (x being an enum with atribute Y) x."Y"
-                return getattr(self.first.eval(state, subject), self.second.eval(state, subject))
+                return getattr(self.first.eval(state, subject), name)
             except:
-                return self.first.eval(state, subject)[self.second.eval(state, subject)]
+                return self.first.eval(state, subject)[name]
     def compile(self, state, subject, ind):
         if self.op == TokenKind.PLUS:
             return "    "*ind+self.first.compile(state, subject, ind)+" + "+self.second.compile(state, subject, ind)
@@ -1196,6 +1243,16 @@ class Parser:
         print(i)
         return SwitchNode(cmpt, switch, i)
 
+    def parse_array(self, cmpt=None, name="any"):
+        self.expect(TokenKind.LBRACK)
+        elements = []
+        while self.token.kind != TokenKind.RBRACK:
+            element = self.parse_expr()
+            elements.append(element)
+            self.accept(TokenKind.COMMA)
+        self.expect(TokenKind.RBRACK)
+        return Array(name, elements)
+
     def parse_match(self, cmpt=None):
         self.expect(TokenKind.MATCH)
         cases = {}
@@ -1212,12 +1269,25 @@ class Parser:
         return MatchNode(match, cases)
     # !self.foo: foo
 
+    def parse_function_args(self):
+        pass
+
     def parse_term(self):
+        term = self.parse_inner_term()
+        if self.accept(TokenKind.LPAREN):
+            return self.parse_call(term)
+        else:
+            return term
+
+    def parse_inner_term(self):
         t = self.token.kind
         if t == TokenKind.IDENT:
             name = self.expect(TokenKind.IDENT).data
             if self.accept(TokenKind.LPAREN):
+                print("e")
                 return self.parse_call(name)
+            elif self.accept(TokenKind.RARROW):
+                return self.parse_array(None, name)
             else:
                 return VarExpr(None, name)
         elif t == TokenKind.INT:
