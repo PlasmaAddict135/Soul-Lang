@@ -1,3 +1,5 @@
+import argparse
+import os
 import subprocess as sub
 from enum import Enum
 from collections import defaultdict
@@ -83,13 +85,13 @@ TokenKind = Enum(
 
 ind = 0
 
-class Token:    
+class Token:
     def __init__(self, row, column, kind: TokenKind, data):
-        self.kind = kind 
+        self.kind = kind
         self.data = data
         self.row = row
         self.column = column
-    
+
     def as_tuple(self):
         return (self.row, self.column, self.kind, self.data)
 
@@ -97,13 +99,13 @@ class Lexer:
     src = []
     idx = 0
     kws = defaultdict(lambda: TokenKind.IDENT)
-    
+
     def __init__(self, src):
-        self.src = src 
+        self.src = src
         self.kws['if'] = TokenKind.IF
         self.kws['{'] = TokenKind.THEN
         self.kws['}'] = TokenKind.BLOCKEND
-        self.kws['('] = TokenKind.LPAREN 
+        self.kws['('] = TokenKind.LPAREN
         self.kws[')'] = TokenKind.RPAREN
         self.kws['else'] = TokenKind.ELSE
         self.kws['+'] = TokenKind.PLUS
@@ -184,7 +186,7 @@ class Lexer:
         while self.idx < len(self.src) and self.current_char_is_valid_in_an_identifier():
             match += self.src[self.idx]
             self.eat()
-        
+
         kind = self.kws[match]
         return Token(self.row, self.column, kind, match)
 
@@ -261,14 +263,14 @@ class Lexer:
         while self.idx < len(self.src) and self.src[self.idx] != '"':
             literal += self.src[self.idx]
             self.eat()
-        
+
         if self.idx >= len(self.src):
             print("Missing end of string delimiter!")
             return Token(self.row, self.column, TokenKind.UNKNOWN, literal)
         assert(self.src[self.idx] == '"')
         self.eat()
         return Token(self.row, self.column, TokenKind.STRING, literal)
-    
+
     def lex_single_quote_literal(self):
         assert(self.src[self.idx] == "'")
         self.eat()
@@ -277,7 +279,7 @@ class Lexer:
         while self.idx < len(self.src) and self.src[self.idx] != "'":
             literal += self.src[self.idx]
             self.eat()
-        
+
         if self.idx >= len(self.src):
             print("Missing end of string delimiter!")
             return Token(self.row, self.column, TokenKind.UNKNOWN, literal)
@@ -293,7 +295,7 @@ class Lexer:
         while self.idx < len(self.src) and self.src[self.idx] != '|':
             literal += self.src[self.idx]
             self.eat()
-        
+
         if self.idx >= len(self.src):
             print("Missing end of comment; |; or just | at end of file")
             return Token(self.row, self.column, TokenKind.UNKNOWN, literal)
@@ -494,7 +496,7 @@ class FunctionNode(AST):
             state_copy = State()
             state_copy.vals = state.vals.copy()
             state_copy.bind("self", state_copy.vals)
- 
+
             if len(args) != len(self.params):
                 raise SyntaxError(f"FunctionCallError: Invalid number of args. Row: {subject.row}, Column: {subject.column}")
 
@@ -576,7 +578,7 @@ class Call(AST):
                 return str(function(*args))
             else:
                 raise SyntaxError(f"(COMPILE TIME) FunctionCallError: This identifier does not belong to a function. Row: {subject.row}, Column: {subject.column}")
-       
+
 class InputNode(AST):
     def __init__(self, prompt: AST):
         self.prompt = prompt
@@ -590,7 +592,7 @@ class InputNode(AST):
 class VarExpr(AST):
     def __init__(self, cmpt: AST, name: str):
         self.cmpt = cmpt
-        self.name = name 
+        self.name = name
     def __repr__(self):
         return self.name
     def eval(self, state, subject):
@@ -638,7 +640,7 @@ class Run(AST):
             elif self.roc != None:
                 print("Compiled in: "+str(time.time()-start)+" seconds")
                 print(self.file)
-                def prCyan(skk): print('\x1b[0;36m' + skk + '\x1b[0m') 
+                def prCyan(skk): print('\x1b[0;36m' + skk + '\x1b[0m')
                 prCyan("\bExecuting with Nim compiler...")
                 sub.Popen(['cmd', '/K', f'nim c -r {self.file}'])
     def compile(self, state, subject, ind):
@@ -800,8 +802,8 @@ class SwitchNode(AST):
 class WhileExpr(AST):
     def __init__(self, cmpt: AST, cond: AST, ret: AST, left: AST):
         self.cmpt = cmpt
-        self.cond = cond 
-        self.left = left 
+        self.cond = cond
+        self.left = left
         self.ret = ret
     def __repr__(self):
         return f"while {self.ret} {self.cond} { {self.left} }"
@@ -947,7 +949,7 @@ class BinOp(AST):
         elif self.op == TokenKind.DOT:
             return "    "*ind+self.first.compile(state, subject, ind)+"."+self.second.compile(state, subject, ind)
 # if 1 == 1 {print "ea"}
-        
+
 class Parser:
     token = Token(1, 1, TokenKind.UNKNOWN, "dummy")
     operators = [TokenKind.PLUS, TokenKind.MINUS, TokenKind.MUL, TokenKind.DIV, TokenKind.EQ, TokenKind.NEQ, TokenKind.LESS, TokenKind.GREAT, TokenKind.IN, TokenKind.LE, TokenKind.GE, TokenKind.AND, TokenKind.OR, TokenKind.DOT, TokenKind.ASSIGN]
@@ -960,8 +962,8 @@ class Parser:
         try:
             next_token = next(self.lexer)
         except StopIteration:
-            next_token = None 
-        
+            next_token = None
+
         if self.token:
             # SWAP THE CURRENT TOKEN WITH THE NEW ONE
             ret = self.token
@@ -1023,7 +1025,7 @@ class Parser:
         first = self.parse_term()
         if self.next_is_operator():
             op = self.parse_operator()
-            return self.parse_binop(first, op)  # parse binop needs to be given the previous value and 
+            return self.parse_binop(first, op)  # parse binop needs to be given the previous value and
                                                 # operator, the way i wrote it
         else:
             return first
@@ -1040,10 +1042,10 @@ class Parser:
         if self.next_is_operator():
             next_ = self.parse_operator()
             if self.prece(op) >= self.prece(next_):
-                return self.parse_binop(BinOp(first, op, second), next_)  # Binop(first, op, second) becomes the 
+                return self.parse_binop(BinOp(first, op, second), next_)  # Binop(first, op, second) becomes the
                                                                     # first for the recursive call
             else:  # prece(next) > prece(op)
-                return BinOp(first, op, self.parse_binop(second, next_))  # recurse to the right, and make the 
+                return BinOp(first, op, self.parse_binop(second, next_))  # recurse to the right, and make the
                                                                     # resulting expr the second for this call
         else:
             return BinOp(first, op, second)
@@ -1060,19 +1062,19 @@ class Parser:
     def parse_var(self, cmpt=None):
         data = self.expect(TokenKind.IDENT).data
         return VarExpr(data)
-    
+
     def parse_alcall(self, cmpt=None):
         self.expect(TokenKind.ALC)
         ident = self.expect(TokenKind.IDENT).data
         return AlgebraicCalling(ident)
-    
+
     def parse_assign(self, cmpt=None):
         self.expect(TokenKind.VAR)
         ident = self.expect(TokenKind.IDENT).data
         self.expect(TokenKind.ASSIGN)
         value = self.parse_expr()
         return Assign(cmpt, ident, value)
-    
+
     def parse_alg(self, cmpt=None):
         self.expect(TokenKind.ALGEBRA)
         ident = self.expect(TokenKind.IDENT).data
@@ -1129,7 +1131,7 @@ class Parser:
         self.expect(TokenKind.RETURN)
         value = self.parse_operator_expr()
         return ReturnNode(cmpt, value)
-    
+
     def parse_break(self, cmpt=None):
         self.expect(TokenKind.BREAK)
         value = self.parse_operator_expr()
@@ -1143,7 +1145,7 @@ class Parser:
             self.accept(TokenKind.COMMA)
         self.expect(TokenKind.RPAREN)
         return Call(cmpt, name, args)
- 
+
     def parse_run(self, cmpt=None):
         c = None
         r = None
@@ -1172,11 +1174,11 @@ class Parser:
     def parse_true(self, cmpt=None):
         self.expect(TokenKind.TRUE)
         return TrueNode()
-    
+
     def parse_false(self, cmpt=None):
         self.expect(TokenKind.FALSE)
         return FalseNode()
-    
+
     def parse_none(self, cmpt=None):
         self.expect(TokenKind.NONE)
         return NoneNode()
@@ -1341,7 +1343,7 @@ class Parser:
         else:
             return self.parse_operator_expr(cmpt)
 
-    # TO EXECUTE EACH AST NODE WITH ITS CASE    
+    # TO EXECUTE EACH AST NODE WITH ITS CASE
     def parse_expr(self):
         if self.token is None:
             raise SyntaxError(f"Unexpected EOF. Row: {self.lexer.row}, Column: {self.lexer.column}")
@@ -1473,38 +1475,65 @@ def dict_(key, value):
 def next_(x):
     return next(x)
 
-# Inputs
-while True:
-    try:
-        if sys.argv[1] != '-c':
-            f = open(sys.argv[2]+".sio", 'r')
-            inpt = f.read()
-            f.close()
-            print(Parser(Lexer(inpt)).parse_statements().eval(current_state, Lexer(inpt)))
-            break
-        elif sys.argv[1] == '-c':
-            if sys.argv[2] != '-r':
-                f = open(sys.argv[2]+'.sio', 'r')
-                inpt = f.read()
-                f.close()
-                start = time.time()
-                ast = Parser(Lexer(inpt)).parse_statements()
-                out = open(sys.argv[2]+".nim", 'w')
-                out.write(ast.compile(current_state, inpt, ind))
-                print("Compiled in: "+str(time.time()-start)+" seconds")
-                break
-            else:
-                f = open(sys.argv[3]+".sio", 'r')
-                inpt = f.read()
-                f.close()
-                start = time.time()
-                ast = Parser(Lexer(inpt)).parse_statements()
-                out = open(sys.argv[3]+".nim", 'w')
-                out.write(ast.compile(current_state, inpt, ind))
-                print("Compiled in: "+str(time.time()-start)+" seconds")
-                print("\bExecuting with Nim compiler...")
-                sub.Popen(['cmd', '/K', f'nim c -r {sys.argv[3]}'])
-                break
-    except:
-        inpt = input('>>> ')
-        print(Parser(Lexer(inpt)).parse_statements().eval(current_state, Lexer(inpt)))
+def read_source_file(path):
+    # Try reading the path directly
+    if os.path.isfile(path):
+        return open(path, 'r').read()
+    # Try with implied extension
+    if os.path.isfile(path + '.sio'):
+        return open(path + '.sio', 'r').read()
+    # No such file
+    raise Exception(f'No source file named {path} could be found!')
+
+def transpile_to_nim(path):
+    start = time.time()
+    # Read file
+    source = read_source_file(path)
+    # Parse into AST
+    ast = Parser(Lexer(source)).parse_statements()
+    # Generate the .nim file name
+    name_base = os.path.splitext(path)[0]
+    output_name = name_base + '.nim'
+    # Write the generated code
+    output = open(output_name, 'w')
+    output.write(ast.compile(current_state, source, ind)) # NOTE: Why is source needed here?
+    print(f'Compiled in: {time.time()-start} seconds')
+    return output_name
+
+def parse_cli_args():
+    # Build the argument parser
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-c', help='Transpile to Nim', action='store_true')
+    parser.add_argument('-r', help='Immediately run transpiled Nim', action='store_true')
+    parser.add_argument('sourcefile', help='The source file to transpile or run', nargs='?')
+    # Do the parse
+    return parser.parse_args()
+
+def assert_source_file_in_cli_args(args):
+    if args.sourcefile == None:
+        raise Exception(f'No source file provided in the command line arguments!')
+
+def main():
+    args = parse_cli_args()
+    print(args.sourcefile)
+    if args.r:
+        # We want to run with the Nim compiler
+        assert_source_file_in_cli_args(args)
+        output = transpile_to_nim(args.sourcefile)
+        sub.Popen(['cmd', '/K', f'nim c -r {output}'])
+    elif args.c:
+        # We want to transpile to Nim
+        assert_source_file_in_cli_args(args)
+        transpile_to_nim(args.sourcefile)
+    elif args.sourcefile != None:
+        # There is a source file to execute
+        source = read_source_file(args.sourcefile)
+        print(Parser(Lexer(source)).parse_statements().eval(current_state, Lexer(source))) # NOTE: Why is a Lexer needed twice?
+    else:
+        # REPL
+        while True:
+            source = input('>>> ')
+            print(Parser(Lexer(source)).parse_statements().eval(current_state, Lexer(source))) # NOTE: Why is a Lexer needed twice?
+
+if __name__ == '__main__':
+    main()
