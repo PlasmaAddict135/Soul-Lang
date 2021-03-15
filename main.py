@@ -1,3 +1,4 @@
+
 import argparse
 import os
 import subprocess as sub
@@ -328,7 +329,7 @@ class State:
         try:
             return self.vals[name]
         except:
-            return eval(name)
+            return eval(self.vals[name])
     def unbind(self, name):
         return self.vals.pop(name)
 
@@ -602,6 +603,19 @@ class VarExpr(AST):
             return "    "*ind+self.name
         else:
             return str(state.lookup(self.name))
+
+class Categories(AST):
+    def __init__(self, cmpt: AST, name: AST, objects: Dict[str, str], body: AST):
+        self.cmpt = cmpt
+        self.name = name
+        self.objects = objects
+        self.body = body
+    def __repr__(self):
+        return f"category {self.name}({self.objects}) { {self.body} }"
+    def eval(self, state, subject):
+        pass
+
+        
 
 class RaiseNode(AST):
     def __init__(self, value):
