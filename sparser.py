@@ -144,6 +144,7 @@ class Parser:
     def parse_block(self, cmpt=None):
         self.expect(TokenKind.THEN).data
         a = self.parse_statements()
+        #print(a)
         self.expect(TokenKind.BLOCKEND).data
         return a
 
@@ -180,6 +181,14 @@ class Parser:
         return FunctionNode(cmpt, name, params, rt, code)
 # WORKING: func foo(arg) int { return arg }
 # WORKING: func foo(arg) { return arg }
+
+    def parse_cat(self, cmpt=None):
+        self.expect(TokenKind.CAT)
+        name = self.expect(TokenKind.IDENT).data
+        self.expect(TokenKind.COLON)
+        obj = self.parse_term()
+        body = self.parse_block()
+        return Categories(cmpt, name, obj, body)
 
     def parse_return(self, cmpt=None):
         self.expect(TokenKind.RETURN)
@@ -368,6 +377,8 @@ class Parser:
             return self.parse_input(cmpt)
         elif t == TokenKind.FUNC:
             return self.parse_function(cmpt)
+        elif t == TokenKind.CAT:
+            return self.parse_cat()
         elif t == TokenKind.RUN:
             return self.parse_run(cmpt)
         elif t == TokenKind.RETURN:

@@ -20,13 +20,13 @@ current_state = State()
 
 # Builtins
 def get_state():
-    return current_state.vals
+    return current_state.scope()
 
 def delete(variable):
     current_state.unbind(variable)
     return None
 
-def array(*args):
+def array_(*args):
     return list(args)
 
 def test(x, y, z):

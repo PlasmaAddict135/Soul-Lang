@@ -72,6 +72,7 @@ TokenKind = Enum(
     SWITCH
     CASE
     RARROW
+    CAT
     '''
 )
 
@@ -156,6 +157,8 @@ class Lexer:
         self.kws['case'] = TokenKind.CASE
         self.kws['!'] = TokenKind.EXCLMK
         self.kws['->'] = TokenKind.RARROW
+        self.kws['category'] = TokenKind.CAT
+        self.kws['cat'] = TokenKind.CAT
 
         self.row = 1
         self.column = 1

@@ -12,3 +12,14 @@ class State:
             return eval(name)
     def unbind(self, name):
         return self.vals.pop(name)
+
+class EarlyReturn(Exception):
+    def __init__(self, value):
+        self.value = value
+
+class EarlyBreak(Exception):
+    def __init__(self, value):
+        self.value = value
+
+class TypeReturnNode(Exception):
+    pass

@@ -1,5 +1,5 @@
 from typing import Dict, Iterable, List, overload
-from runtime import State
+from runtime import *
 from lexer import TokenKind
 
 class AST:
@@ -28,6 +28,7 @@ class Assign(AST):
         return self.var
     def eval(self, state, subject):
         state.bind(self.var, self.assignment.eval(state, subject))
+        return (TypeChecker(self.var).check(state), self.var)
     def compile(self, state, subject, ind):
         if self.cmpt == None:
             return "    "*ind+"var "+self.var.compile(state, subject, ind)+" = "+self.assignment.compile(state, subject, ind)
@@ -110,14 +111,6 @@ class Echo(AST):
         print(self.data)
         return "    "*ind+"echo "+self.data.compile(state, subject, 0)
 
-class EarlyReturn(Exception):
-    def __init__(self, value):
-        self.value = value
-
-class EarlyBreak(Exception):
-    def __init__(self, value):
-        self.value = value
-
 class BreakNode(AST):
     def __init__(self, cmpt, value):
         self.cmpt = cmpt
@@ -145,9 +138,6 @@ class ReturnNode(AST):
             return "    "*ind+"return "+self.value.compile(state, subject, 0)
         else:
             raise str(EarlyReturn(self.value.eval(state, subject)))
-
-class TypeReturnNode(Exception):
-    pass
 
 class FunctionNode(AST):
     def __init__(self, cmpt: AST, name: AST, params: Dict[str, str], return_type: AST, body: AST):
@@ -276,6 +266,31 @@ class VarExpr(AST):
         else:
             return str(state.lookup(self.name))
 
+class Categories(AST):
+    def __init__(self, cmpt: AST, name: AST, objects: AST, body: AST):
+        self.cmpt = cmpt
+        self.name = name
+        self.objects = objects
+        self.body = body
+    def __repr__(self):
+        return f"category {self.name}({self.objects}) { {self.body} }"
+    def eval(self, state, subject):
+        state_copy = State()
+        state_copy.vals = state.vals.copy()
+
+        def call_fn(*args):
+            state_copy = State()
+            state_copy.vals = state.vals.copy()
+            state_copy.bind("self", state_copy.vals)
+            try:
+                return self.body.eval(state_copy, subject)
+            except:
+                pass
+        state.bind(self.name, call_fn)
+        state_copy.bind(self.name, call_fn)
+        call_fn()
+        return state_copy.vals
+
 class RaiseNode(AST):
     def __init__(self, value):
         self.value = value
@@ -319,8 +334,11 @@ class Run(AST):
     def compile(self, state, subject, ind):
         return "    "*ind+Run(None, None, self.file).eval(state, subject)
 
-class SyntaxError(Exception):
-    pass
+class TypeChecker:
+    def __init__(self, name):
+        self.name =name
+    def check(self, state: State):
+        return type(state.lookup(self.name))
 
 class IfExpr(AST):
     def __init__(self, cmpt: AST, cond: AST, left: AST, right: AST):
