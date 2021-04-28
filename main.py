@@ -1,4 +1,3 @@
-
 import argparse
 import os
 import subprocess as sub
@@ -81,6 +80,7 @@ TokenKind = Enum(
     SWITCH
     CASE
     RARROW
+    CAT
     '''
 )
 
@@ -167,6 +167,8 @@ class Lexer:
         self.kws['case'] = TokenKind.CASE
         self.kws['!'] = TokenKind.EXCLMK
         self.kws['->'] = TokenKind.RARROW
+        self.kws['category'] = TokenKind.CAT
+        self.kws['cat'] = TokenKind.CAT
 
         self.row = 1
         self.column = 1
@@ -329,7 +331,9 @@ class State:
         try:
             return self.vals[name]
         except:
-            return eval(self.vals[name])
+            return eval(name)
+    def scope(self):
+        return self.vals
     def unbind(self, name):
         return self.vals.pop(name)
 
@@ -337,6 +341,7 @@ class SequenceNode(AST):
     def __init__(self, first, second):
         self.first = first
         self.second = second
+
     def eval(self, state, subject):
         self.first.eval(state, subject)
         return self.second.eval(state, subject)
@@ -514,7 +519,6 @@ class FunctionNode(AST):
                         raise TypeReturnNode(f"Function did not return type specified. Row: {subject.row}, Column: {subject.column}")
                 else:
                     return ER.value
-
         state.bind(self.name, call_fn)
         state_copy.bind(self.name, call_fn)
     def compile(self, state, subject, ind):
@@ -545,7 +549,6 @@ class FunctionNode(AST):
                         return ER.value
             state.bind(self.name, call_fn)
             state_copy.bind(self.name, call_fn)
-
 
 # Thanks Crunch! Very based!
 class Call(AST):
@@ -605,7 +608,7 @@ class VarExpr(AST):
             return str(state.lookup(self.name))
 
 class Categories(AST):
-    def __init__(self, cmpt: AST, name: AST, objects: Dict[str, str], body: AST):
+    def __init__(self, cmpt: AST, name: AST, objects: AST, body: AST):
         self.cmpt = cmpt
         self.name = name
         self.objects = objects
@@ -613,9 +616,24 @@ class Categories(AST):
     def __repr__(self):
         return f"category {self.name}({self.objects}) { {self.body} }"
     def eval(self, state, subject):
-        pass
+        state_copy = State()
+        state_copy.vals = state.vals.copy()
 
-        
+        def call_fn(*args):
+            state_copy = State()
+            state_copy.vals = state.vals.copy()
+            state_copy.bind("self", state_copy.vals)
+            try:
+                return self.body.eval(state_copy, subject)
+            except:
+                pass
+        state.bind(self.name, call_fn)
+        state_copy.bind(self.name, call_fn)
+        call_fn()
+        return state_copy.vals
+
+# func x() { var b = 9; print "e" }
+# cat Main: int { var x = 9; print x }
 
 class RaiseNode(AST):
     def __init__(self, value):
@@ -661,6 +679,9 @@ class Run(AST):
         return "    "*ind+Run(None, None, self.file).eval(state, subject)
 
 class SyntaxError(Exception):
+    pass
+
+class ObjectError(Exception):
     pass
 
 class IfExpr(AST):
@@ -964,6 +985,9 @@ class BinOp(AST):
             return "    "*ind+self.first.compile(state, subject, ind)+"."+self.second.compile(state, subject, ind)
 # if 1 == 1 {print "ea"}
 
+class TypeChecker:
+    pass
+
 class Parser:
     token = Token(1, 1, TokenKind.UNKNOWN, "dummy")
     operators = [TokenKind.PLUS, TokenKind.MINUS, TokenKind.MUL, TokenKind.DIV, TokenKind.EQ, TokenKind.NEQ, TokenKind.LESS, TokenKind.GREAT, TokenKind.IN, TokenKind.LE, TokenKind.GE, TokenKind.AND, TokenKind.OR, TokenKind.DOT, TokenKind.ASSIGN]
@@ -1104,6 +1128,7 @@ class Parser:
     def parse_block(self, cmpt=None):
         self.expect(TokenKind.THEN).data
         a = self.parse_statements()
+        print(a)
         self.expect(TokenKind.BLOCKEND).data
         return a
 
@@ -1140,6 +1165,14 @@ class Parser:
         return FunctionNode(cmpt, name, params, rt, code)
 # WORKING: func foo(arg) int { return arg }
 # WORKING: func foo(arg) { return arg }
+
+    def parse_cat(self, cmpt=None):
+        self.expect(TokenKind.CAT)
+        name = self.expect(TokenKind.IDENT).data
+        self.expect(TokenKind.COLON)
+        obj = self.parse_term()
+        body = self.parse_block()
+        return Categories(cmpt, name, obj, body)
 
     def parse_return(self, cmpt=None):
         self.expect(TokenKind.RETURN)
@@ -1376,6 +1409,8 @@ class Parser:
             return self.parse_input()
         elif t == TokenKind.FUNC:
             return self.parse_function()
+        elif t == TokenKind.CAT:
+            return self.parse_cat()
         elif t == TokenKind.RUN:
             return self.parse_run()
         elif t == TokenKind.RETURN:
@@ -1407,13 +1442,13 @@ current_state = State()
 
 # Builtins
 def get_state():
-    return current_state.vals
+    return current_state.scope()
 
 def delete(variable):
     current_state.unbind(variable)
     return None
 
-def array(*args):
+def array_(*args):
     return list(args)
 
 def test(x, y, z):
