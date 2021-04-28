@@ -20,7 +20,7 @@ current_state = State()
 
 # Builtins
 def get_state():
-    return current_state.scope()
+    return current_state.vals
 
 def delete(variable):
     current_state.unbind(variable)
