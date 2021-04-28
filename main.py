@@ -16,6 +16,7 @@ from runtime import State
 # DRIVER CLASSES
 ########################################
 
+ind = 0
 current_state = State()
 
 # Builtins
