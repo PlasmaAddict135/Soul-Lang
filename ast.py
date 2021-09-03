@@ -1,7 +1,8 @@
 from typing import Dict, Iterable, List, overload
 from runtime import *
 from lexer import TokenKind
-
+from lexer import Lexer
+import sparser
 class AST:
     pass
 
@@ -313,14 +314,14 @@ class Run(AST):
             f = open(str(self.file)+'.soul', 'r')
             inpt = f.read()
             f.close()
-            ast = Parser(Lexer(inpt)).parse_statements()
+            ast = sparser.Parser(Lexer(inpt)).parse_statements()
             return ast.eval(state, subject)
         elif self.c != None:
             f = open(str(self.file)+'.soul', 'r')
             inpt = f.read()
             f.close()
             start = time.time()
-            ast = Parser(Lexer(inpt)).parse_statements()
+            ast = sparser.Parser(Lexer(inpt)).parse_statements()
             out = open(str(self.file)+".nim", 'w')
             out.write(ast.compile(state, subject, ind))
             if self.roc == None:
