@@ -310,13 +310,13 @@ class Run(AST):
         return self.file
     def eval(self, state, subject):
         if self.c == None:
-            f = open(str(self.file)+'.sio', 'r')
+            f = open(str(self.file)+'.soul', 'r')
             inpt = f.read()
             f.close()
             ast = Parser(Lexer(inpt)).parse_statements()
             return ast.eval(state, subject)
         elif self.c != None:
-            f = open(str(self.file)+'.sio', 'r')
+            f = open(str(self.file)+'.soul', 'r')
             inpt = f.read()
             f.close()
             start = time.time()
