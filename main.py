@@ -105,8 +105,8 @@ def read_source_file(path):
     if os.path.isfile(path):
         return open(path, 'r').read()
     # Try with implied extension
-    if os.path.isfile(path + '.sio'):
-        return open(path + '.sio', 'r').read()
+    if os.path.isfile(path + '.soul'):
+        return open(path + '.soul', 'r').read()
     # No such file
     raise Exception(f'No source file named {path} could be found!')
 
@@ -153,7 +153,9 @@ def main():
     elif args.sourcefile != None:
         # There is a source file to execute
         source = read_source_file(args.sourcefile)
+        start = time.time()
         print(Parser(Lexer(source)).parse_statements().eval(current_state, Lexer(source))) # NOTE: Why is a Lexer needed twice?
+        print(f'Executed in: {time.time()-start} seconds')
     else:
         # REPL
         while True:
